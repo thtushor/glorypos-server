@@ -46,6 +46,7 @@ Updated all major route files to use the new access control:
 - `api/routes/unitRoutes.js`
 - `api/routes/colorRoutes.js`
 - `api/routes/sizeRoutes.js`
+- `api/routes/userRoutes.js` ⭐ **NEW**
 
 **Pattern**: Added `addShopAccess` middleware and updated service calls to use `req.accessibleShopIds`
 
@@ -58,6 +59,7 @@ Updated service methods to filter by accessible shop IDs:
 - `api/services/ColorService.js`
 - `api/services/SizeService.js`
 - `api/services/orderService.js`
+- `api/services/UserRoleService.js` ⭐ **NEW**
 
 **Pattern**: Changed `userId` parameter to `accessibleShopIds` and updated where clauses to use `{ UserId: { [Op.in]: accessibleShopIds } }`
 
@@ -78,6 +80,11 @@ Accessible IDs:
 - Shop A: [1, 2, 3]
 - Shop B: [1, 2, 3] 
 - Shop C: [1, 2, 3]
+
+UserRole Access:
+- Shop A can see: UserRoles from shops [1, 2, 3]
+- Shop B can see: UserRoles from shops [1, 2, 3]
+- Shop C can see: UserRoles from shops [1, 2, 3]
 ```
 
 ### Database Queries
@@ -85,21 +92,23 @@ All data queries now filter by accessible shop IDs:
 ```sql
 SELECT * FROM products WHERE UserId IN (1, 2, 3)
 SELECT * FROM orders WHERE UserId IN (1, 2, 3)
+SELECT * FROM user_roles WHERE parentUserId IN (1, 2, 3)
 -- etc.
 ```
 
 ## Benefits
 
-1. **Shared Access**: Shops in the same hierarchy can view each other's products, orders, categories, etc.
+1. **Shared Access**: Shops in the same hierarchy can view each other's products, orders, categories, user roles, etc.
 2. **Performance**: Efficient database queries using `IN` clause
 3. **Security**: Proper access control prevents unauthorized data access
 4. **Scalability**: Supports unlimited depth of hierarchy
 5. **Maintainability**: DRY principle with reusable helper functions
+6. **User Management**: Each shop can manage their own user roles while sharing access across the hierarchy
 
 ## Testing
 
 - **Test File**: `test-shop-hierarchy.js`
-- **Coverage**: Tests parent-child relationships, access control, and data sharing
+- **Coverage**: Tests parent-child relationships, access control, data sharing, and UserRole functionality
 - **Validation**: Verifies correct accessible shop IDs for different scenarios
 
 ## Usage

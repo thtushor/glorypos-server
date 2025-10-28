@@ -3,6 +3,7 @@ const { UserRoleService } = require('../services');
 const { AuthService } = require('../services');
 const subscriptionLimits = require('../middleware/subscriptionLimits');
 const requestHandler = require('../utils/requestHandler');
+const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 
 const router = express.Router();
 
@@ -20,8 +21,9 @@ router.post('/child-user',
 // Update child user role/permissions
 router.post('/child-user/:id',
     AuthService.authenticate,
+    addShopAccess,
     requestHandler(null, async (req, res) => {
-        const result = await UserRoleService.updateUserRole(req.params.id, req.body, req.user.id);
+        const result = await UserRoleService.updateUserRole(req.params.id, req.body, req.accessibleShopIds);
         res.status(result.status ? 200 : 400).json(result);
     })
 );
@@ -29,8 +31,9 @@ router.post('/child-user/:id',
 // Get all child users
 router.get('/child-users',
     AuthService.authenticate,
+    addShopAccess,
     requestHandler(null, async (req, res) => {
-        const result = await UserRoleService.getChildUsers(req.user.id, req?.query);
+        const result = await UserRoleService.getChildUsers(req.accessibleShopIds, req?.query);
         res.status(result.status ? 200 : 400).json(result);
     })
 );
@@ -38,8 +41,9 @@ router.get('/child-users',
 // Delete child user
 router.post('/child-users/delete/:id',
     AuthService.authenticate,
+    addShopAccess,
     requestHandler(null, async (req, res) => {
-        const result = await UserRoleService.deleteChildUser(req.params.id, req.user.id);
+        const result = await UserRoleService.deleteChildUser(req.params.id, req.accessibleShopIds);
         res.status(result.status ? 200 : 400).json(result);
     })
 );

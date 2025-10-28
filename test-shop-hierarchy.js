@@ -1,5 +1,6 @@
-const { User } = require('./api/entity');
+const { User, UserRole } = require('./api/entity');
 const { getAccessibleShopIds, getAccessibleShopInfo } = require('./api/utils/shopAccess');
+const { UserRoleService } = require('./api/services');
 
 /**
  * Test script to verify the parent-child shop hierarchy implementation
@@ -82,8 +83,65 @@ async function testShopHierarchy() {
         });
         console.log(`✅ Shop info retrieved: ${shopInfo.accessibleShopIds.length === 3 ? 'PASS' : 'FAIL'}\n`);
 
-        // Test 6: Test with a shop that has no children
-        console.log('6. Testing with shop that has no children...');
+        // Test 6: Test UserRole functionality with shop hierarchy
+        console.log('6. Testing UserRole functionality with shop hierarchy...');
+        
+        // Create user roles for parent shop
+        const parentUserRole1 = await UserRole.create({
+            fullName: 'Parent Manager',
+            email: 'parentmanager@shop.com',
+            phone: '1111111111',
+            password: 'hashedpassword',
+            role: 'manager',
+            status: 'active',
+            permissions: { products: ['view', 'create', 'edit', 'delete'] },
+            parentUserId: parentShop.id
+        });
+
+        const parentUserRole2 = await UserRole.create({
+            fullName: 'Parent Staff',
+            email: 'parentstaff@shop.com',
+            phone: '1111111112',
+            password: 'hashedpassword',
+            role: 'staff',
+            status: 'active',
+            permissions: { products: ['view'] },
+            parentUserId: parentShop.id
+        });
+
+        // Create user roles for child shop
+        const childUserRole1 = await UserRole.create({
+            fullName: 'Child Manager',
+            email: 'childmanager@shop.com',
+            phone: '2222222221',
+            password: 'hashedpassword',
+            role: 'manager',
+            status: 'active',
+            permissions: { products: ['view', 'create', 'edit', 'delete'] },
+            parentUserId: childShop1.id
+        });
+
+        console.log(`✅ User roles created for parent and child shops\n`);
+
+        // Test 7: Test UserRole access from different shops
+        console.log('7. Testing UserRole access from different shops...');
+        
+        // Test getting user roles from parent shop perspective
+        const parentUserRoles = await UserRoleService.getChildUsers(parentAccessibleIds, {});
+        console.log(`Parent shop can see ${parentUserRoles.data.users.length} user roles`);
+        console.log(`Expected: 3 user roles (2 from parent + 1 from child)`);
+        console.log(`✅ Parent shop user role access: ${parentUserRoles.data.users.length === 3 ? 'PASS' : 'FAIL'}\n`);
+
+        // Test getting user roles from child shop perspective
+        const childUserRoles = await UserRoleService.getChildUsers(childAccessibleIds, {});
+        console.log(`Child shop can see ${childUserRoles.data.users.length} user roles`);
+        console.log(`Expected: 3 user roles (2 from parent + 1 from child)`);
+        console.log(`✅ Child shop user role access: ${childUserRoles.data.users.length === 3 ? 'PASS' : 'FAIL'}\n`);
+
+        // Test 8: Test with a shop that has no children
+        console.log('8. Testing UserRole access from standalone shop...');
+        
+        // Create standalone shop first
         const standaloneShop = await User.create({
             fullName: 'Standalone Shop Owner',
             email: 'standalone@shop.com',
@@ -97,14 +155,27 @@ async function testShopHierarchy() {
             isVerified: true,
             parent_id: null // This is a standalone parent shop
         });
+        
+        const standaloneUserRole = await UserRole.create({
+            fullName: 'Standalone Manager',
+            email: 'standalonemanager@shop.com',
+            phone: '3333333331',
+            password: 'hashedpassword',
+            role: 'manager',
+            status: 'active',
+            permissions: { products: ['view', 'create', 'edit', 'delete'] },
+            parentUserId: standaloneShop.id
+        });
 
         const standaloneAccessibleIds = await getAccessibleShopIds(standaloneShop.id);
-        console.log(`Standalone shop accessible IDs: [${standaloneAccessibleIds.join(', ')}]`);
-        console.log(`Expected: [${standaloneShop.id}]`);
-        console.log(`✅ Standalone shop can access: ${standaloneAccessibleIds.length === 1 ? 'PASS' : 'FAIL'}\n`);
+        const standaloneUserRoles = await UserRoleService.getChildUsers(standaloneAccessibleIds, {});
+        console.log(`Standalone shop can see ${standaloneUserRoles.data.users.length} user roles`);
+        console.log(`Expected: 1 user role (only from standalone shop)`);
+        console.log(`✅ Standalone shop user role access: ${standaloneUserRoles.data.users.length === 1 ? 'PASS' : 'FAIL'}\n`);
 
         // Cleanup
-        console.log('7. Cleaning up test data...');
+        console.log('9. Cleaning up test data...');
+        await UserRole.destroy({ where: { id: [parentUserRole1.id, parentUserRole2.id, childUserRole1.id, standaloneUserRole.id] } });
         await User.destroy({ where: { id: [parentShop.id, childShop1.id, childShop2.id, standaloneShop.id] } });
         console.log('✅ Test data cleaned up\n');
 
@@ -115,6 +186,7 @@ async function testShopHierarchy() {
         console.log('✅ Shop access control middleware created');
         console.log('✅ Route handlers updated to use accessible shop IDs');
         console.log('✅ Service methods updated to filter by accessible shops');
+        console.log('✅ UserRole service updated for shop hierarchy');
         console.log('✅ Database migration created for parent_id column');
 
     } catch (error) {

@@ -95,12 +95,12 @@ const UserRoleService = {
         }
     },
 
-    async updateUserRole(id, updateData, parentId) {
+    async updateUserRole(id, updateData, accessibleShopIds) {
         try {
             const userRole = await UserRole.findOne({
                 where: {
                     id,
-                    parentUserId: parentId
+                    parentUserId: { [Op.in]: accessibleShopIds }
                 }
             });
 
@@ -127,7 +127,7 @@ const UserRoleService = {
                 });
 
                 const existingParent = await User.findOne({
-                    where: { email: userData.email }
+                    where: { email: updateData.email }
                 });
 
                 if (existingUser || existingParent) {
@@ -159,15 +159,15 @@ const UserRoleService = {
         }
     },
 
-    async getChildUsers(parentId, query = {}) {
+    async getChildUsers(accessibleShopIds, query = {}) {
         try {
             const page = parseInt(query.page) || 1;
             const pageSize = parseInt(query.pageSize) || 10;
             const offset = (page - 1) * pageSize;
       
-            // Build where clause
+            // Build where clause - filter by accessible shop IDs
             const whereClause = {
-                parentUserId: parentId
+                parentUserId: { [Op.in]: accessibleShopIds }
             };
 
             // Add role and status filters
@@ -222,12 +222,12 @@ const UserRoleService = {
         }
     },
 
-    async deleteChildUser(id, parentId) {
+    async deleteChildUser(id, accessibleShopIds) {
         try {
             const userRole = await UserRole.findOne({
                 where: {
                     id,
-                    parentUserId: parentId
+                    parentUserId: { [Op.in]: accessibleShopIds }
                 }
             });
 
