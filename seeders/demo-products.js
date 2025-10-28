@@ -1,0 +1,158 @@
+'use strict';
+
+module.exports = {
+    up: async (queryInterface, Sequelize) => {
+        const products = [
+            {
+                code: "890123456789",
+                sku: "COL-2L-001",
+                name: "Coca-Cola Classic",
+                description: "Classic cola drink - 2L bottle",
+                CategoryId: 1,
+                BrandId: 1,
+                UnitId: 10,
+                alertQuantity: 20,
+                productImage: "https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=800&auto=format&fit=crop",
+                discountType: "percentage",
+                discountAmount: 5.00,
+                purchasePrice: 1.50,
+                salesPrice: 1.99,
+                vat: 5.00,
+                price: 2.49,
+                stock: 500,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: "890123456790",
+                sku: "LAY-FAM-001",
+                name: "Lay's Classic",
+                description: "Original potato chips - Family pack",
+                CategoryId: 3,
+                BrandId: 23,
+                UnitId: 7,
+                alertQuantity: 15,
+                productImage: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=800&auto=format&fit=crop",
+                discountType: "amount",
+                discountAmount: 0.50,
+                purchasePrice: 2.99,
+                salesPrice: 3.99,
+                vat: 5.00,
+                price: 4.49,
+                stock: 200,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: "890123456791",
+                sku: "NES-200G-001",
+                name: "Nescafé Gold",
+                description: "Premium instant coffee - 200g jar",
+                CategoryId: 25,
+                BrandId: 24,
+                UnitId: 12,
+                alertQuantity: 10,
+                productImage: "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=800&auto=format&fit=crop",
+                discountType: null,
+                discountAmount: null,
+                purchasePrice: 6.99,
+                salesPrice: 8.99,
+                vat: 5.00,
+                price: 9.99,
+                stock: 100,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: null,
+                sku: "RED-250-001",
+                name: "Red Bull Energy",
+                description: "Energy drink - 250ml can",
+                CategoryId: 29,
+                BrandId: 14,
+                UnitId: 11,
+                alertQuantity: 25,
+                productImage: "https://images.unsplash.com/photo-1613426757669-84c6c11fc767?w=800&auto=format&fit=crop",
+                discountType: null,
+                discountAmount: null,
+                purchasePrice: 1.99,
+                salesPrice: 2.49,
+                vat: 5.00,
+                price: 2.99,
+                stock: 300,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: null,
+                sku: "CAD-100G-001",
+                name: "Cadbury Dairy Milk",
+                description: "Milk chocolate bar - 100g",
+                CategoryId: 24,
+                BrandId: 25,
+                UnitId: 5,
+                alertQuantity: 20,
+                productImage: "https://images.unsplash.com/photo-1623341214825-9f4f963727da?w=800&auto=format&fit=crop",
+                discountType: "percentage",
+                discountAmount: 10.00,
+                purchasePrice: 1.99,
+                salesPrice: 2.99,
+                vat: 5.00,
+                price: 3.49,
+                stock: 250,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: null,
+                sku: "PEP-2L-001",
+                name: "Pepsi Cola",
+                description: "Pepsi Cola - 2L bottle",
+                CategoryId: 1,
+                BrandId: 3,
+                UnitId: 10,
+                alertQuantity: 20,
+                productImage: "https://images.unsplash.com/photo-1629203851265-5a070e4ddb87?w=800&auto=format&fit=crop",
+                discountType: null,
+                discountAmount: null,
+                purchasePrice: 1.49,
+                salesPrice: 1.99,
+                vat: 5.00,
+                price: 2.29,
+                stock: 400,
+                status: "active",
+                UserId: 1
+            },
+            {
+                code: null,
+                sku: "DOR-FAM-001",
+                name: "Doritos Nacho Cheese",
+                description: "Nacho Cheese Flavored Tortilla Chips - Family Size",
+                CategoryId: 3,
+                BrandId: 27,
+                UnitId: 7,
+                alertQuantity: 15,
+                productImage: "https://images.unsplash.com/photo-1600952841320-db92ec4047ca?w=800&auto=format&fit=crop",
+                discountType: null,
+                discountAmount: null,
+                purchasePrice: 3.49,
+                salesPrice: 4.49,
+                vat: 5.00,
+                price: 4.99,
+                stock: 180,
+                status: "active",
+                UserId: 1
+            }
+        ].map(product => ({
+            ...product,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }));
+
+        await queryInterface.bulkInsert('Products', products, {});
+    },
+
+    down: async (queryInterface, Sequelize) => {
+        await queryInterface.bulkDelete('Products', null, {});
+    }
+};
