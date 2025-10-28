@@ -2,6 +2,7 @@ const express = require('express');
 const { ColorService } = require('../services');
 const { AuthService } = require('../services');
 const requestHandler = require('../utils/requestHandler');
+const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 
 const router = express.Router();
 
@@ -11,27 +12,23 @@ router.post('/', AuthService.authenticate, requestHandler(null, async (req, res)
     res.status(result.status ? 201 : 400).json(result);
 }));
 
-router.get('/', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const UserId = req?.user?.id || null;
-    const result = await ColorService.getAll(req.query, UserId);
+router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await ColorService.getAll(req.query, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 
-router.get('/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const UserId = req?.user?.id || null;
-    const result = await ColorService.getById(req.params.id, UserId);
+router.get('/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await ColorService.getById(req.params.id, req.accessibleShopIds);
     res.status(result.status ? 200 : 404).json(result);
 }));
 
-router.post('/update/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const UserId = req?.user?.id || null;
-    const result = await ColorService.update(req.params.id, req.body, UserId);
+router.post('/update/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await ColorService.update(req.params.id, req.body, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 
-router.post('/delete/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const UserId = req?.user?.id || null;
-    const result = await ColorService.delete(req.params.id, UserId);
+router.post('/delete/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await ColorService.delete(req.params.id, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 

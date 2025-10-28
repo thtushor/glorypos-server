@@ -30,14 +30,14 @@ const ColorService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId });
+            }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const colors = await Color.findAll({ where: whereClause });
             return { status: true, message: "Colors retrieved successfully", data: colors };
@@ -46,12 +46,12 @@ const ColorService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const color = await Color.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!color) {
@@ -63,12 +63,12 @@ const ColorService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const color = await Color.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!color) {
@@ -80,7 +80,7 @@ const ColorService = {
                 const existingColor = await Color.findOne({
                     where: {
                         name: updateData.name,
-                        UserId: userId,
+                        UserId: { [Op.in]: accessibleShopIds },
                         id: { [Op.ne]: id }
                     }
                 });
@@ -119,9 +119,14 @@ const ColorService = {
         }
     },
 
-    async delete(id) {
+    async delete(id, accessibleShopIds) {
         try {
-            const color = await Color.findByPk(id);
+            const color = await Color.findOne({
+                where: {
+                    id: id,
+                    UserId: { [Op.in]: accessibleShopIds }
+                }
+            });
             if (!color) {
                 return { status: false, message: "Color not found", data: null };
             }

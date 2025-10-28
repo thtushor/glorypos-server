@@ -40,14 +40,14 @@ const UnitService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId });
+            }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const units = await Unit.findAll({ where: whereClause });
             return { status: true, message: "Units retrieved successfully", data: units };
@@ -56,12 +56,12 @@ const UnitService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const unit = await Unit.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!unit) {
@@ -73,12 +73,12 @@ const UnitService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const unit = await Unit.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!unit) {
@@ -127,12 +127,12 @@ const UnitService = {
         }
     },
 
-    async delete(id, userId) {
+    async delete(id, accessibleShopIds) {
         try {
             const unit = await Unit.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!unit) {

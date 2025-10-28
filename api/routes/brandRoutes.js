@@ -2,6 +2,7 @@ const express = require('express');
 const { BrandService } = require('../services');
 const { AuthService } = require('../services');
 const requestHandler = require('../utils/requestHandler');
+const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 
 const router = express.Router();
 
@@ -11,23 +12,23 @@ router.post('/', AuthService.authenticate, requestHandler(null, async (req, res)
     res.status(result.status ? 201 : 400).json(result);
 }));
 
-router.get('/', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const result = await BrandService.getAll(req.query, req?.user?.id);
+router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await BrandService.getAll(req.query, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 
-router.get('/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const result = await BrandService.getById(req.params.id, req?.user?.id);
+router.get('/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await BrandService.getById(req.params.id, req.accessibleShopIds);
     res.status(result.status ? 200 : 404).json(result);
 }));
 
-router.post('/update/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const result = await BrandService.update(req.params.id, req.body, req?.user?.id);
+router.post('/update/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await BrandService.update(req.params.id, req.body, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 
-router.post('/delete/:id', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const result = await BrandService.delete(req.params.id, req?.user?.id);
+router.post('/delete/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await BrandService.delete(req.params.id, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));
 

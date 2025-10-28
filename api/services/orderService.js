@@ -22,7 +22,7 @@ const OrderService = {
             const order = await Order.create({
                 ...orderData,
                 orderNumber,
-                UserId: userId,
+                UserId: { [Op.in]: accessibleShopIds },
                 orderDate: new Date(),
                 subtotal,
                 tax,
@@ -67,7 +67,7 @@ const OrderService = {
                         ProductId: productId,
                         ProductVariantId: variantId,
                         OrderId: order.id,
-                        UserId: userId,
+                        UserId: { [Op.in]: accessibleShopIds },
                         note: `Order ${orderNumber}`
                     }, { transaction });
                 } else {
@@ -79,7 +79,7 @@ const OrderService = {
                         newStock,
                         ProductId: productId,
                         OrderId: order.id,
-                        UserId: userId,
+                        UserId: { [Op.in]: accessibleShopIds },
                         note: `Order ${orderNumber}`
                     }, { transaction });
                 }
@@ -106,14 +106,14 @@ const OrderService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const page = parseInt(query.page) || 1;
             const pageSize = parseInt(query.pageSize) || 10;
             const offset = (page - 1) * pageSize;
 
             // Build where clause
-            const whereClause = { UserId: userId };
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
 
             // Add search functionality
             if (query.searchKey) {
@@ -217,11 +217,11 @@ const OrderService = {
         }
     },
 
-    async getCustomerOrders(customerId, userId) {
+    async getCustomerOrders(customerId, accessibleShopIds) {
         try {
             const orders = await Order.findAll({
                 where: {
-                    UserId: userId,
+                    UserId: { [Op.in]: accessibleShopIds },
                     customerPhone: customerId
                 },
                 include: [{
@@ -248,10 +248,10 @@ const OrderService = {
         }
     },
 
-    async getDashboardStats(userId, dateRange) {
+    async getDashboardStats(accessibleShopIds, dateRange) {
         try {
             const whereClause = {
-                UserId: userId,
+                UserId: { [Op.in]: accessibleShopIds },
                 orderStatus: 'completed'
             };
 
@@ -319,9 +319,9 @@ const OrderService = {
         }
     },
 
-    async getSalesReport(userId, query = {}) {
+    async getSalesReport(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: userId };
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
             if (query.startDate && query.endDate) {
                 whereClause.orderDate = {
                     [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
@@ -380,7 +380,7 @@ const OrderService = {
         }
     },
 
-    async generateInvoice(orderId, userId) {
+    async generateInvoice(orderId, accessibleShopIds) {
         try {
 
 
@@ -390,7 +390,7 @@ const OrderService = {
             const order = await Order.findOne({
                 where: {
                     id: Number(orderId),
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 },
                 include: [{
                     model: OrderItem,
@@ -504,9 +504,9 @@ const OrderService = {
         }
     },
 
-    async getTopSellingItems(userId, query = {}) {
+    async getTopSellingItems(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: userId };
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
             if (query.startDate && query.endDate) {
                 whereClause.orderDate = {
                     [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
@@ -600,9 +600,9 @@ const OrderService = {
         }
     },
 
-    async getTopCustomers(userId, query = {}) {
+    async getTopCustomers(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: userId };
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
             if (query.startDate && query.endDate) {
                 whereClause.orderDate = {
                     [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
@@ -657,7 +657,7 @@ const OrderService = {
             const product = await Product.findOne({
                 where: {
                     id: productId,
-                    UserId: userId,
+                    UserId: { [Op.in]: accessibleShopIds },
                     status: "active"
                 },
                 transaction
@@ -736,7 +736,7 @@ const OrderService = {
         return { validatedItems, subtotal };
     },
 
-    async getSalesChartData(userId, query = {}) {
+    async getSalesChartData(accessibleShopIds, query = {}) {
         try {
             const { startDate, endDate } = query;
 
@@ -745,7 +745,7 @@ const OrderService = {
             }
 
             const whereClause = {
-                UserId: userId,
+                UserId: { [Op.in]: accessibleShopIds },
                 orderStatus: 'completed',
                 orderDate: {
                     [Op.between]: [new Date(startDate), new Date(endDate)]

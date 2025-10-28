@@ -1,4 +1,5 @@
 const { Product, Category, Brand, Unit, ProductVariant, Color, Size } = require('../entity');
+const { Op } = require('sequelize');
 
 const ProductService = {
     async create(productData, userId) {
@@ -13,14 +14,14 @@ const ProductService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId }); // Add UserId to where clause
+            }, { UserId: { [Op.in]: accessibleShopIds } }); // Filter by accessible shop IDs
 
             const products = await Product.findAll({
                 where: whereClause,
@@ -59,25 +60,25 @@ const ProductService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const product = await Product.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 },
                 include: [
                     {
                         model: Category,
-                        where: { UserId: userId }
+                        where: { UserId: { [Op.in]: accessibleShopIds } }
                     },
                     {
                         model: Brand,
-                        where: { UserId: userId }
+                        where: { UserId: { [Op.in]: accessibleShopIds } }
                     },
                     {
                         model: Unit,
-                        where: { UserId: userId }
+                        where: { UserId: { [Op.in]: accessibleShopIds } }
                     },
                     {
                         model: Color,
@@ -90,11 +91,11 @@ const ProductService = {
                         include: [
                             {
                                 model: Color,
-                                where: { UserId: userId }
+                                where: { UserId: { [Op.in]: accessibleShopIds } }
                             },
                             {
                                 model: Size,
-                                where: { UserId: userId }
+                                where: { UserId: { [Op.in]: accessibleShopIds } }
                             }
                         ]
                     }
@@ -109,12 +110,12 @@ const ProductService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const product = await Product.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!product) {
@@ -127,12 +128,12 @@ const ProductService = {
         }
     },
 
-    async delete(id, userId) {
+    async delete(id, accessibleShopIds) {
         try {
             const product = await Product.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!product) {

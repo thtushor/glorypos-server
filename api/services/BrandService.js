@@ -30,14 +30,14 @@ const BrandService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId });
+            }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const brands = await Brand.findAll({
                 where: whereClause
@@ -48,12 +48,12 @@ const BrandService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const brand = await Brand.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!brand) {
@@ -65,12 +65,12 @@ const BrandService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const brand = await Brand.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
 
@@ -108,12 +108,12 @@ const BrandService = {
         }
     },
 
-    async delete(id, userId) {
+    async delete(id, accessibleShopIds) {
         try {
             const brand = await Brand.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!brand) {

@@ -30,14 +30,14 @@ const CategoryService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId });
+            }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const categories = await Category.findAll({
                 where: whereClause
@@ -49,12 +49,12 @@ const CategoryService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const category = await Category.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!category) {
@@ -66,12 +66,12 @@ const CategoryService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const category = await Category.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!category) {
@@ -83,7 +83,7 @@ const CategoryService = {
                 const existingCategory = await Category.findOne({
                     where: {
                         name: updateData.name,
-                        UserId: userId,
+                        UserId: { [Op.in]: accessibleShopIds },
                         id: { [Op.ne]: id }
                     }
                 });
@@ -122,12 +122,12 @@ const CategoryService = {
         }
     },
 
-    async delete(id, userId) {
+    async delete(id, accessibleShopIds) {
         try {
             const category = await Category.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!category) {

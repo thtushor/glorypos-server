@@ -87,6 +87,15 @@ const User = sequelize.define(
             defaultValue: false,
             comment: "Tracks if the user is currently logged in",
         },
+        parent_id: {
+            type: Sequelize.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'Users',
+                key: 'id'
+            },
+            comment: "Foreign key to parent user (shop). Null means this is a parent shop.",
+        },
 
     }
 );

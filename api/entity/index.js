@@ -25,6 +25,10 @@ User.hasMany(UserSubscription);
 User.hasMany(UserRole, { as: 'childUsers', foreignKey: 'parentUserId' });
 User.hasOne(UserRole, { as: 'roleInfo', foreignKey: 'userId' });
 
+// Parent-Child Shop Associations
+User.belongsTo(User, { as: 'parent', foreignKey: 'parent_id' });
+User.hasMany(User, { as: 'children', foreignKey: 'parent_id' });
+
 // Product Associations
 Product.belongsTo(User);
 Product.belongsTo(Category);

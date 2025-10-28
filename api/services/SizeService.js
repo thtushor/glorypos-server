@@ -30,14 +30,14 @@ const SizeService = {
         }
     },
 
-    async getAll(query = {}, userId) {
+    async getAll(query = {}, accessibleShopIds) {
         try {
             const whereClause = Object.keys(query).reduce((acc, key) => {
                 if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
                     acc[key] = query[key];
                 }
                 return acc;
-            }, { UserId: userId });
+            }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const sizes = await Size.findAll({ where: whereClause });
             return { status: true, message: "Sizes retrieved successfully", data: sizes };
@@ -46,12 +46,12 @@ const SizeService = {
         }
     },
 
-    async getById(id, userId) {
+    async getById(id, accessibleShopIds) {
         try {
             const size = await Size.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!size) {
@@ -63,12 +63,12 @@ const SizeService = {
         }
     },
 
-    async update(id, updateData, userId) {
+    async update(id, updateData, accessibleShopIds) {
         try {
             const size = await Size.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!size) {
@@ -119,12 +119,12 @@ const SizeService = {
         }
     },
 
-    async delete(id, userId) {
+    async delete(id, accessibleShopIds) {
         try {
             const size = await Size.findOne({
                 where: {
                     id: id,
-                    UserId: userId
+                    UserId: { [Op.in]: accessibleShopIds }
                 }
             });
             if (!size) {
