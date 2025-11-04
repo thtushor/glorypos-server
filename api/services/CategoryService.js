@@ -1,4 +1,4 @@
-const { Category } = require('../entity');
+const { Category, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const CategoryService = {
@@ -40,7 +40,12 @@ const CategoryService = {
             }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const categories = await Category.findAll({
-                where: whereClause
+                where: whereClause,
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             return { status: true, message: "Categories retrieved successfully", data: categories };
         } catch (error) {

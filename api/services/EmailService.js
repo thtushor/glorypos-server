@@ -5,7 +5,8 @@ class EmailService {
     constructor() {
         this.transporter = nodemailer.createTransport({
             service: 'gmail',
-            port: 415,
+            // port: 587,
+            secure: false, // Important: STARTTLS uses secure=false
             auth: {
                 user: process.env.ADMIN_EMAIL,
                 pass: process.env.ADMIN_PASSWORD

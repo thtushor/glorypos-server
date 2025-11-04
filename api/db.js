@@ -49,7 +49,7 @@ if (process.env.NODE_ENV === 'development') {
         {
             host: process.env.MYSQLHOST,
             dialect: 'mysql',
-            logging: process.env.logging === 'true',
+            logging: false,
             port: process.env.PORT
         }
     );

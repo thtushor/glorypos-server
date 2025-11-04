@@ -28,21 +28,17 @@ const AuthService = {
                 isVerified: false
             });
 
-            await EmailService.sendVerificationEmail(user)
+            console.log({ user })
 
-            // await EmailService.sendVerificationEmail(user);
+            try {
+                await EmailService.sendVerificationEmail(user)
+            } catch (error) {
+                return { status: false, message: "Failed to send verification email", data: null, error };
+            }
 
-            return {
-                status: true,
-                message: 'Registration successful. Please check your email to verify your account.',
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    fullName: user.fullName
-                }
-            };
+            return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
         } catch (error) {
-            throw error;
+            return { status: false, message: "Failed to register user", data: null, error };
         }
     },
 

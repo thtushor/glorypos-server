@@ -1,4 +1,4 @@
-const { Brand } = require('../entity');
+const { Brand, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const BrandService = {
@@ -40,7 +40,12 @@ const BrandService = {
             }, { UserId: { [Op.in]: accessibleShopIds } });
 
             const brands = await Brand.findAll({
-                where: whereClause
+                where: whereClause,
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             return { status: true, message: "Brands retrieved successfully", data: brands };
         } catch (error) {

@@ -1,4 +1,4 @@
-const { Unit } = require('../entity');
+const { Unit, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const UnitService = {
@@ -49,7 +49,15 @@ const UnitService = {
                 return acc;
             }, { UserId: { [Op.in]: accessibleShopIds } });
 
-            const units = await Unit.findAll({ where: whereClause });
+            const units = await Unit.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: User
+                    }
+                ]
+
+            });
             return { status: true, message: "Units retrieved successfully", data: units };
         } catch (error) {
             return { status: false, message: "Failed to retrieve units", data: null, error };
