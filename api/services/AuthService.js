@@ -23,18 +23,22 @@ const AuthService = {
 
             const user = await User.create({
                 ...userData,
+                parent_id: userData?.parentId,
                 password: hashedPassword,
                 accountStatus: 'inactive',
                 isVerified: false
             });
 
-            console.log({ user })
 
-            try {
-                await EmailService.sendVerificationEmail(user)
-            } catch (error) {
-                return { status: false, message: "Failed to send verification email", data: null, error };
+
+            if (!userData?.ignoreEmailVerification) {
+                try {
+                    await EmailService.sendVerificationEmail(user)
+                } catch (error) {
+                    return { status: false, message: "Failed to send verification email", data: null, error };
+                }
             }
+
 
             return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
         } catch (error) {

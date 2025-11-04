@@ -46,7 +46,7 @@ router.get('/users', AuthService.authenticate, requestHandler(null, async (req, 
 }));
 
 router.get('/sub-shops', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
-    const userId = req?.query?.userId;
+    const userId = req?.query?.userId||req?.user?.id;
 
     if (!userId) {
         return res.status(400).json({ status: false, message: "userId is required", data: null });
