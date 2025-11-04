@@ -438,6 +438,80 @@ const AuthService = {
         }
     },
 
+    async getSubShops(query, userId) {
+        try {
+            const page = parseInt(query.page) || 1;
+            const pageSize = parseInt(query.pageSize) || 10;
+            const offset = (page - 1) * pageSize;
+
+            // Build where clause - filter by parent_id
+            const whereClause = {
+                parent_id: userId
+            };
+
+            // Add search functionality
+            if (query.searchKey) {
+                whereClause[Op.or] = [
+                    { email: { [Op.like]: `%${query.searchKey}%` } },
+                    { phoneNumber: { [Op.like]: `%${query.searchKey}%` } },
+                    { fullName: { [Op.like]: `%${query.searchKey}%` } },
+                    { businessName: { [Op.like]: `%${query.searchKey}%` } }
+                ];
+            }
+
+            // Add filters
+            if (query.accountStatus) whereClause.accountStatus = query.accountStatus;
+            if (query.accountType) whereClause.accountType = query.accountType;
+
+            const { count, rows } = await User.findAndCountAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: UserSubscription,
+                        required: false, // LEFT JOIN to include users without subscriptions
+                        where: {
+                            status: 'active',
+                            endDate: {
+                                [Op.gt]: new Date()
+                            },
+                            paymentStatus: 'completed'
+                        },
+                        include: [
+                            {
+                                model: SubscriptionPlan
+                            }
+                        ]
+                    }
+                ],
+                order: [['createdAt', 'DESC']],
+                limit: pageSize,
+                offset
+            });
+
+            const totalPages = Math.ceil(count / pageSize);
+
+            return {
+                status: true,
+                message: "Sub shops retrieved successfully",
+                data: {
+                    users: rows,
+                    pagination: {
+                        page,
+                        pageSize,
+                        totalPages,
+                        totalItems: count,
+                        hasNextPage: page < totalPages,
+                        hasPreviousPage: page > 1
+                    }
+                }
+            };
+
+        } catch (error) {
+            console.log({ error })
+            throw error;
+        }
+    },
+
     isAdmin: async (req, res, next) => {
         try {
             // Check if user exists in request (should be added by authenticate middleware)

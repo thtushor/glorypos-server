@@ -44,6 +44,17 @@ router.get('/users', AuthService.authenticate, requestHandler(null, async (req, 
     res.status(200).json(result);
 }));
 
+router.get('/sub-shops', AuthService.authenticate, requestHandler(null, async (req, res) => {
+    const userId = req?.query?.userId;
+
+    if (!userId) {
+        return res.status(400).json({ status: false, message: "userId is required", data: null });
+    }
+
+    const result = await AuthService.getSubShops(req?.query, userId);
+    res.status(200).json(result);
+}));
+
 
 router.post('/verify-email', requestHandler(null, async (req, res) => {
     const result = await AuthService.verifyEmail(req?.body?.token, req.body.email);
