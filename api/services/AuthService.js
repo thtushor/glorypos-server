@@ -438,7 +438,7 @@ const AuthService = {
         }
     },
 
-    async getSubShops(query, userId) {
+    async getSubShops(query, userId, accessibleShopIds = []) {
         try {
             const page = parseInt(query.page) || 1;
             const pageSize = parseInt(query.pageSize) || 10;
@@ -448,6 +448,13 @@ const AuthService = {
             const whereClause = {
                 parent_id: userId
             };
+
+            // Apply shop access filter - only return shops the user has access to
+            if (accessibleShopIds && accessibleShopIds.length > 0) {
+                whereClause.id = {
+                    [Op.in]: accessibleShopIds
+                };
+            }
 
             // Add search functionality
             if (query.searchKey) {

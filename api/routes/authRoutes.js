@@ -1,6 +1,7 @@
 const express = require('express');
 const { AuthService } = require('../services');
 const requestHandler = require('../utils/requestHandler');
+const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 
 const router = express.Router();
 
@@ -44,14 +45,16 @@ router.get('/users', AuthService.authenticate, requestHandler(null, async (req, 
     res.status(200).json(result);
 }));
 
-router.get('/sub-shops', AuthService.authenticate, requestHandler(null, async (req, res) => {
+router.get('/sub-shops', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const userId = req?.query?.userId;
 
     if (!userId) {
         return res.status(400).json({ status: false, message: "userId is required", data: null });
     }
 
-    const result = await AuthService.getSubShops(req?.query, userId);
+    const accessibleShopIds = req.accessibleShopIds || [];
+
+    const result = await AuthService.getSubShops(req?.query, userId, accessibleShopIds);
     res.status(200).json(result);
 }));
 
