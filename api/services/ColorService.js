@@ -1,4 +1,4 @@
-const { Color } = require('../entity');
+const { Color, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const ColorService = {
@@ -60,7 +60,14 @@ const ColorService = {
                 }
             });
 
-            const colors = await Color.findAll({ where: whereClause });
+            const colors = await Color.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: User
+                    }
+                ]
+            });
             return { status: true, message: "Colors retrieved successfully", data: colors };
         } catch (error) {
             return { status: false, message: "Failed to retrieve colors", data: null, error };
@@ -73,7 +80,12 @@ const ColorService = {
                 where: {
                     id: id,
                     UserId: { [Op.in]: accessibleShopIds }
-                }
+                },
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             if (!color) {
                 return { status: false, message: "Color not found", data: null };

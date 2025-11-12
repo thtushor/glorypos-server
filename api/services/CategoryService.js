@@ -80,7 +80,12 @@ const CategoryService = {
                 where: {
                     id: id,
                     UserId: { [Op.in]: accessibleShopIds }
-                }
+                },
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             if (!category) {
                 return { status: false, message: "Category not found", data: null };

@@ -79,7 +79,12 @@ const BrandService = {
                 where: {
                     id: id,
                     UserId: { [Op.in]: accessibleShopIds }
-                }
+                },
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             if (!brand) {
                 return { status: false, message: "Brand not found", data: null };

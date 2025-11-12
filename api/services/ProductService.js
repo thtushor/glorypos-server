@@ -1,4 +1,4 @@
-const { Product, Category, Brand, Unit, ProductVariant, Color, Size } = require('../entity');
+const { Product, Category, Brand, Unit, ProductVariant, Color, Size, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const ProductService = {
@@ -49,6 +49,9 @@ const ProductService = {
                 where: whereClause,
                 include: [
                     {
+                        model: User
+                    },
+                    {
                         model: Category,
                     },
                     {
@@ -90,6 +93,9 @@ const ProductService = {
                     UserId: { [Op.in]: accessibleShopIds }
                 },
                 include: [
+                    {
+                        model: User
+                    },
                     {
                         model: Category,
                         where: { UserId: { [Op.in]: accessibleShopIds } }

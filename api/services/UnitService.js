@@ -90,7 +90,12 @@ const UnitService = {
                 where: {
                     id: id,
                     UserId: { [Op.in]: accessibleShopIds }
-                }
+                },
+                include: [
+                    {
+                        model: User
+                    }
+                ]
             });
             if (!unit) {
                 return { status: false, message: "Unit not found", data: null };
