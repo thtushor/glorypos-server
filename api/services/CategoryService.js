@@ -32,12 +32,32 @@ const CategoryService = {
 
     async getAll(query = {}, accessibleShopIds) {
         try {
-            const whereClause = Object.keys(query).reduce((acc, key) => {
-                if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
-                    acc[key] = query[key];
+            // Build where clause with shop access
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
+
+            // Add shopId filter if provided
+            if (query.shopId) {
+                const shopId = parseInt(query.shopId);
+                if (accessibleShopIds.includes(shopId)) {
+                    whereClause.UserId = shopId;
                 }
-                return acc;
-            }, { UserId: { [Op.in]: accessibleShopIds } });
+            }
+
+            // Add search functionality
+            if (query.searchKey) {
+                whereClause[Op.or] = [
+                    { name: { [Op.like]: `%${query.searchKey}%` } },
+                    { description: { [Op.like]: `%${query.searchKey}%` } }
+                ];
+            }
+
+            // Add other filters if provided
+            const { searchKey, shopId, ...otherFilters } = query;
+            Object.keys(otherFilters).forEach(key => {
+                if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
+                    whereClause[key] = otherFilters[key];
+                }
+            });
 
             const categories = await Category.findAll({
                 where: whereClause,
