@@ -1,18 +1,25 @@
-const User = require('./User');
-const Product = require('./Product');
-const Category = require('./Category');
-const Brand = require('./Brand');
-const Unit = require('./Unit');
-const Order = require('./Order');
-const Color = require('./Color');
-const Size = require('./Size');
-const ProductVariant = require('./ProductVariant');
-const OrderItem = require('./OrderItem');
-const StockHistory = require('./StockHistory');
-const SubscriptionPlan = require('./SubscriptionPlan');
-const UserSubscription = require('./UserSubscription');
-const Coupon = require('./Coupon');
-const UserRole = require('./UserRole');
+const User = require("./User");
+const Product = require("./Product");
+const Category = require("./Category");
+const Brand = require("./Brand");
+const Unit = require("./Unit");
+const Order = require("./Order");
+const Color = require("./Color");
+const Size = require("./Size");
+const ProductVariant = require("./ProductVariant");
+const OrderItem = require("./OrderItem");
+const StockHistory = require("./StockHistory");
+const SubscriptionPlan = require("./SubscriptionPlan");
+const UserSubscription = require("./UserSubscription");
+const Coupon = require("./Coupon");
+const UserRole = require("./UserRole");
+
+// === PAYROLL MODELS ===
+const Attendance = require("./Attendance");
+const LeaveRequest = require("./LeaveRequest");
+const Holiday = require("./Holiday");
+const PayrollRelease = require("./PayrollRelease");
+const SalaryHistory = require("./SalaryHistory");
 
 // User Associations
 User.hasMany(Product);
@@ -22,12 +29,18 @@ User.hasMany(Unit);
 User.hasMany(Color);
 User.hasMany(Size);
 User.hasMany(UserSubscription);
-User.hasMany(UserRole, { as: 'childUsers', foreignKey: 'parentUserId' });
-User.hasOne(UserRole, { as: 'roleInfo', foreignKey: 'userId' });
+
+// === USER & USERROLE ===
+User.hasMany(UserRole, { as: "childUsers", foreignKey: "parentUserId" });
+UserRole.belongsTo(User, { as: "parent", foreignKey: "parentUserId" });
+
+// old user & userrole associations
+// User.hasMany(UserRole, { as: "childUsers", foreignKey: "parentUserId" });
+// User.hasOne(UserRole, { as: "roleInfo", foreignKey: "userId" });
 
 // Parent-Child Shop Associations
-User.belongsTo(User, { as: 'parent', foreignKey: 'parent_id' });
-User.hasMany(User, { as: 'children', foreignKey: 'parent_id' });
+User.belongsTo(User, { as: "parent", foreignKey: "parent_id" });
+User.hasMany(User, { as: "children", foreignKey: "parent_id" });
 
 // Product Associations
 Product.belongsTo(User);
@@ -36,7 +49,6 @@ Product.belongsTo(Brand);
 Product.belongsTo(Unit);
 Product.belongsTo(Size);
 Product.belongsTo(Color);
-
 
 // Category Associations
 Category.belongsTo(User);
@@ -59,7 +71,6 @@ Product.hasMany(ProductVariant);
 ProductVariant.belongsTo(Product);
 ProductVariant.belongsTo(Color);
 ProductVariant.belongsTo(Size);
-
 
 // Order Associations
 Order.belongsTo(User);
@@ -84,23 +95,44 @@ UserSubscription.belongsTo(SubscriptionPlan);
 SubscriptionPlan.hasMany(UserSubscription);
 
 // UserRole Associations
-UserRole.belongsTo(User, { as: 'parent', foreignKey: 'parentUserId' });
+// UserRole.belongsTo(User, { as: "parent", foreignKey: "parentUserId" });
 
+// === PAYROLL ASSOCIATIONS ===
+UserRole.hasMany(Attendance, { foreignKey: "userId" });
+Attendance.belongsTo(UserRole, { foreignKey: "userId" });
+
+UserRole.hasMany(LeaveRequest, { foreignKey: "userId" });
+LeaveRequest.belongsTo(UserRole, { foreignKey: "userId" });
+
+UserRole.hasMany(Holiday, { foreignKey: "adminId" });
+Holiday.belongsTo(UserRole, { foreignKey: "adminId" });
+
+UserRole.hasMany(PayrollRelease, { foreignKey: "userId" });
+PayrollRelease.belongsTo(UserRole, { foreignKey: "userId" });
+
+UserRole.hasMany(SalaryHistory, { foreignKey: "userId" });
+SalaryHistory.belongsTo(UserRole, { foreignKey: "userId" });
 
 module.exports = {
-    User,
-    Product,
-    Category,
-    Brand,
-    Unit,
-    Order,
-    Color,
-    Size,
-    ProductVariant,
-    OrderItem,
-    StockHistory,
-    SubscriptionPlan,
-    UserSubscription,
-    Coupon,
-    UserRole
+  User,
+  Product,
+  Category,
+  Brand,
+  Unit,
+  Order,
+  Color,
+  Size,
+  ProductVariant,
+  OrderItem,
+  StockHistory,
+  SubscriptionPlan,
+  UserSubscription,
+  Coupon,
+  UserRole,
+  // === EXPORT PAYROLL MODELS ===
+  Attendance,
+  LeaveRequest,
+  Holiday,
+  PayrollRelease,
+  SalaryHistory,
 };
