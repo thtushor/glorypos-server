@@ -32,6 +32,24 @@ const ProductService = {
                 }
             }
 
+            // Add category filter if provided
+            if (query.categoryId) {
+                const categoryId = parseInt(query.categoryId);
+                whereClause.CategoryId = categoryId;
+            }
+
+            // Add brand filter if provided
+            if (query.brandId) {
+                const brandId = parseInt(query.brandId);
+                whereClause.BrandId = brandId;
+            }
+
+            // Add unit filter if provided
+            if (query.unitId) {
+                const unitId = parseInt(query.unitId);
+                whereClause.UnitId = unitId;
+            }
+
             // Add search functionality
             if (query.searchKey) {
                 whereClause[Op.or] = [
@@ -42,8 +60,8 @@ const ProductService = {
                 ];
             }
 
-            // Add other filters if provided (exclude pagination and search params)
-            const { searchKey, shopId, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
+            // Add other filters if provided (exclude pagination, search, and filter params)
+            const { searchKey, shopId, categoryId, brandId, unitId, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
             Object.keys(otherFilters).forEach(key => {
                 if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
                     whereClause[key] = otherFilters[key];
