@@ -13,24 +13,23 @@ const StatementService = require("./statementService");
 const SubscriptionService = require("./SubscriptionService");
 const CouponService = require("./CouponService");
 const UserRoleService = require("./UserRoleService");
-
-
+const PayrollService = require("./PayrollService");
 
 module.exports = {
-    AuthService,
-    ProductService,
-    CategoryService,
-    BrandService,
-    UnitService,
-    OrderService,
-    ColorService,
-    SizeService,
-    ProductVariantService,
-    StockService,
-    NotificationService,
-    StatementService,
-    SubscriptionService,
-    CouponService,
-    UserRoleService
-
+  AuthService,
+  ProductService,
+  CategoryService,
+  BrandService,
+  UnitService,
+  OrderService,
+  ColorService,
+  SizeService,
+  ProductVariantService,
+  StockService,
+  NotificationService,
+  StatementService,
+  SubscriptionService,
+  CouponService,
+  UserRoleService,
+  PayrollService,
 };
