@@ -16,6 +16,11 @@ const ProductService = {
 
     async getAll(query = {}, accessibleShopIds) {
         try {
+            // Pagination parameters
+            const page = parseInt(query.page) || 1;
+            const pageSize = parseInt(query.pageSize) || 10;
+            const offset = (page - 1) * pageSize;
+
             // Build where clause with shop access
             const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
 
@@ -37,14 +42,19 @@ const ProductService = {
                 ];
             }
 
-            // Add other filters if provided
-            const { searchKey, shopId, ...otherFilters } = query;
+            // Add other filters if provided (exclude pagination and search params)
+            const { searchKey, shopId, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
             Object.keys(otherFilters).forEach(key => {
                 if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
                     whereClause[key] = otherFilters[key];
                 }
             });
 
+            // Get total count for pagination
+            const totalCount = await Product.count({ where: whereClause });
+            const totalPages = Math.ceil(totalCount / pageSize);
+
+            // Get paginated products with related data
             const products = await Product.findAll({
                 where: whereClause,
                 include: [
@@ -77,9 +87,26 @@ const ProductService = {
                             }
                         ]
                     }
-                ]
+                ],
+                limit: pageSize,
+                offset: offset
             });
-            return { status: true, message: "Products retrieved successfully", data: products };
+
+            return {
+                status: true,
+                message: "Products retrieved successfully",
+                data: {
+                    products,
+                    pagination: {
+                        page,
+                        pageSize,
+                        totalPages,
+                        totalItems: totalCount,
+                        hasNextPage: page < totalPages,
+                        hasPreviousPage: page > 1
+                    }
+                }
+            };
         } catch (error) {
             return { status: false, message: "Failed to retrieve products", data: null, error };
         }
