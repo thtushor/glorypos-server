@@ -50,6 +50,19 @@ const ProductService = {
                 whereClause.UnitId = unitId;
             }
 
+            // Add price range filter if provided
+            if (query.minPrice || query.maxPrice) {
+                whereClause.price = {};
+                if (query.minPrice) {
+                    const minPrice = parseFloat(query.minPrice);
+                    whereClause.price[Op.gte] = minPrice;
+                }
+                if (query.maxPrice) {
+                    const maxPrice = parseFloat(query.maxPrice);
+                    whereClause.price[Op.lte] = maxPrice;
+                }
+            }
+
             // Add search functionality
             if (query.searchKey) {
                 whereClause[Op.or] = [
@@ -61,7 +74,7 @@ const ProductService = {
             }
 
             // Add other filters if provided (exclude pagination, search, and filter params)
-            const { searchKey, shopId, categoryId, brandId, unitId, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
+            const { searchKey, shopId, categoryId, brandId, unitId, minPrice, maxPrice, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
             Object.keys(otherFilters).forEach(key => {
                 if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
                     whereClause[key] = otherFilters[key];
