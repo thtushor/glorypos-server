@@ -9,13 +9,14 @@ const {
   Holiday,
   LeaveRequest,
   UserRole,
+  User,
 } = require("../entity");
 
 const PayrollService = {
   // Case 4: Mark multiple users present for a date
   // Case 4: Mark multiple users present for today's date
 
-  async markMultipleAttendance(adminId, { userIds }) {
+  async markMultiplePresent(adminId, { userIds }) {
     const transaction = await sequelize.transaction();
     let result;
 
@@ -27,18 +28,15 @@ const PayrollService = {
         where: { id: { [Op.in]: userIds }, parentUserId: adminId },
         transaction,
       });
+      if (users.length !== userIds.length) throw new Error("Invalid users");
 
-      if (users.length !== userIds.length) {
-        throw new Error("Invalid users");
-      }
-
-      // Check existing
+      // Check existing (any type)
       const existing = await Attendance.findAll({
         where: { userId: { [Op.in]: userIds }, date },
         transaction,
       });
-      const alreadyMarkedIds = existing.map((a) => a.userId);
-      const newUserIds = userIds.filter((id) => !alreadyMarkedIds.includes(id));
+      const alreadyMarked = existing.map((a) => a.userId);
+      const newUserIds = userIds.filter((id) => !alreadyMarked.includes(id));
 
       if (newUserIds.length === 0) {
         throw new Error(
@@ -46,85 +44,155 @@ const PayrollService = {
         );
       }
 
-      // Create records
-      const attendances = newUserIds.map((userId) => ({
+      const records = newUserIds.map((userId) => ({
         userId,
         date,
+        type: "present",
         lateMinutes: 0,
         extraMinutes: 0,
         isHalfDay: false,
-        isFullAbsent: false,
       }));
 
-      await Attendance.bulkCreate(attendances, { transaction });
-
-      // COMMIT ONLY AFTER SUCCESS
+      await Attendance.bulkCreate(records, { transaction });
       await transaction.commit();
 
       result = {
         status: true,
-        message: `Attendance marked for ${newUserIds.length} user(s) today`,
-        data: attendances,
+        message: `Marked ${newUserIds.length} as PRESENT`,
+        data: records,
       };
     } catch (error) {
-      // ROLLBACK ONLY IF NOT COMMITTED
-      try {
-        await transaction.rollback();
-      } catch (rollbackError) {
-        console.error("Rollback failed (already committed):", rollbackError);
-      }
-
+      await transaction.rollback();
       result = { status: false, message: error.message };
     }
 
-    return result; // ← ALWAYS RETURN HERE
+    return result;
   },
 
-  // Case 4: Update attendance details for one user
-  async updateAttendance(
+  // MARK MULTIPLE ABSENT
+  async markMultipleAbsent(
     adminId,
-    userId,
-    { lateMinutes, extraMinutes, isHalfDay, isFullAbsent, notes }
+    { userIds, reason, isHalfDay = false, notes = "" }
   ) {
+    const transaction = await sequelize.transaction();
+    let result;
+
     try {
       const date = moment().format("YYYY-MM-DD");
-      if (lateMinutes < 0 || extraMinutes < 0) {
-        throw new Error("Minutes cannot be negative");
+
+      const users = await UserRole.findAll({
+        where: { id: { [Op.in]: userIds }, parentUserId: adminId },
+        transaction,
+      });
+      if (users.length !== userIds.length) throw new Error("Invalid users");
+
+      const existing = await Attendance.findAll({
+        where: { userId: { [Op.in]: userIds }, date },
+        transaction,
+      });
+      const alreadyMarked = existing.map((a) => a.userId);
+      const newUserIds = userIds.filter((id) => !alreadyMarked.includes(id));
+
+      if (newUserIds.length === 0) {
+        throw new Error(
+          "Attendance already marked for all selected users today"
+        );
       }
 
-      // Check user belongs to admin
+      const records = newUserIds.map((userId) => ({
+        userId,
+        date,
+        type: "absent",
+        reason,
+        isHalfDay,
+        notes,
+        lateMinutes: 0,
+        extraMinutes: 0,
+      }));
+
+      await Attendance.bulkCreate(records, { transaction });
+      await transaction.commit();
+
+      result = {
+        status: true,
+        message: `Marked ${newUserIds.length} as ABSENT`,
+        data: records,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      result = { status: false, message: error.message };
+    }
+
+    return result;
+  },
+
+  // UPDATE SINGLE ATTENDANCE (PRESENT or ABSENT)
+  async updateAttendance(adminId, userId, payload) {
+    try {
+      const date = moment().format("YYYY-MM-DD");
+      const type = payload.type || "present";
+
       const user = await UserRole.findOne({
         where: { id: userId, parentUserId: adminId },
       });
-      if (!user) {
-        throw new Error("User not found");
-      }
+      if (!user) throw new Error("User not found");
 
-      // Find or create attendance
-      const [attendance] = await Attendance.findOrCreate({
+      const [record] = await Attendance.findOrCreate({
         where: { userId, date },
         defaults: {
+          type,
           lateMinutes: 0,
           extraMinutes: 0,
           isHalfDay: false,
-          isFullAbsent: false,
+          reason: null,
+          notes: null,
         },
       });
 
-      // Update
-      await attendance.update({
-        lateMinutes,
-        extraMinutes,
-        isHalfDay,
-        isFullAbsent,
-        notes,
-      });
+      const updateData = {};
+
+      if (type === "present") {
+        updateData.type = "present";
+        updateData.lateMinutes = payload.lateMinutes || 0;
+        updateData.extraMinutes = payload.extraMinutes || 0;
+        updateData.isHalfDay = payload.isHalfDay || false;
+        updateData.reason = null;
+      } else if (type === "absent") {
+        updateData.type = "absent";
+        updateData.reason = payload.reason || "absent";
+        updateData.isHalfDay = payload.isHalfDay || false;
+        updateData.notes = payload.notes || null;
+        updateData.lateMinutes = 0;
+        updateData.extraMinutes = 0;
+      }
+
+      await record.update(updateData);
 
       return {
         status: true,
-        message: "Attendance updated successfully",
-        data: attendance,
+        message: `Attendance updated: ${type.toUpperCase()}`,
+        data: record,
       };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  // DELETE ATTENDANCE (to undo)
+  async deleteAttendance(adminId, userId, date) {
+    try {
+      const record = await Attendance.findOne({
+        where: { userId, date },
+      });
+      if (!record) throw new Error("No attendance record found");
+
+      const user = await UserRole.findOne({
+        where: { id: userId, parentUserId: adminId },
+      });
+      if (!user) throw new Error("Unauthorized");
+
+      await record.destroy();
+      return { status: true, message: "Attendance removed" };
     } catch (error) {
       return { status: false, message: error.message };
     }
@@ -161,6 +229,74 @@ const PayrollService = {
 
       return { status: true, message: "Leave request created", data: leave };
     } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  // get full leave history
+  async getLeaveHistory(adminId, query = {}) {
+    try {
+      const {
+        page = 1,
+        pageSize = 10,
+        status,
+        userId,
+        startDate,
+        endDate,
+      } = query;
+
+      // CRITICAL: Convert to numbers!
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 10;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      const userWhere = { parentUserId: adminId };
+
+      if (userId) userWhere.id = Number(userId); // also convert
+      if (status) where.status = status;
+      if (startDate) where.startDate = { [Op.gte]: startDate };
+      if (endDate) where.endDate = { [Op.lte]: endDate };
+
+      const { count, rows } = await LeaveRequest.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "employee",
+            where: userWhere,
+            attributes: ["id", "fullName", "email", "role"],
+          },
+          {
+            model: User,
+            as: "approver",
+            attributes: ["id", "fullName"],
+            required: false,
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: pageSizeNum, // ← Number
+        offset, // ← Number
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "Leave history fetched",
+        data: {
+          leaves: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
+    } catch (error) {
+      console.error("LeaveHistory Error:", error); // ← Log for debugging
       return { status: false, message: error.message };
     }
   },
@@ -270,162 +406,209 @@ const PayrollService = {
     }
   },
 
+  async getPromotionHistory(userId) {
+    try {
+      const history = await SalaryHistory.findAll({
+        where: { userId },
+        order: [["startDate", "DESC"]],
+        attributes: [
+          "id",
+          "salary",
+          "previousSalary",
+          "status",
+          "startDate",
+          "createdAt",
+        ],
+        include: [
+          {
+            model: UserRole,
+            as: "userRole",
+            attributes: ["id", "fullName", "email", "role", "baseSalary"],
+          },
+        ],
+      });
+
+      return {
+        status: true,
+        message: "Promotion history fetched",
+        data: { userId, history },
+      };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async getAllPromotionHistory(query = {}) {
+    try {
+      const {
+        page = 1,
+        pageSize = 20,
+        userId,
+        status,
+        startDate,
+        endDate,
+      } = query;
+
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 20;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      if (userId) where.userId = Number(userId);
+      if (status) where.status = status;
+      if (startDate) where.startDate = { [Op.gte]: startDate };
+      if (endDate) where.startDate = { [Op.lte]: endDate };
+
+      const { count, rows } = await SalaryHistory.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            attributes: ["id", "fullName", "email", "role", "baseSalary"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "All promotion history fetched",
+        data: {
+          history: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
+    } catch (error) {
+      console.error("getAllPromotionHistory error:", error);
+      return { status: false, message: error.message };
+    }
+  },
+
   // Case 5,6: Get salary details for month (preview)
   async getSalaryDetails(adminId, userId, month) {
-    // month 'YYYY-MM'
     try {
       const startDate = moment(month + "-01", "YYYY-MM-DD");
       const endDate = startDate.clone().endOf("month");
-      if (!startDate.isValid()) {
-        throw new Error("Invalid month");
-      }
+      if (!startDate.isValid()) throw new Error("Invalid month");
 
       const user = await UserRole.findOne({
         where: { id: userId, parentUserId: adminId },
       });
-      if (!user || !user.requiredDailyHours) {
-        throw new Error("User not found or incomplete setup");
-      }
+      if (!user || !user.requiredDailyHours)
+        throw new Error("User not found or incomplete");
 
-      // Get salary histories
-      const salaryHistories = await SalaryHistory.findAll({
-        where: { userId },
-        order: [["startDate", "ASC"]],
-      });
+      const [holidays, leaves, attendances, salaryHistories] =
+        await Promise.all([
+          Holiday.findAll({
+            where: {
+              date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
+            },
+          }),
+          LeaveRequest.findAll({ where: { userId, status: "approved" } }),
+          Attendance.findAll({
+            where: {
+              userId,
+              date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
+            },
+          }),
+          SalaryHistory.findAll({
+            where: { userId },
+            order: [["startDate", "ASC"]],
+          }),
+        ]);
 
-      // Get holidays in month
-      const holidays = await Holiday.findAll({
-        where: {
-          date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
-        },
-      });
       const holidayDates = holidays.map((h) =>
         moment(h.date).format("YYYY-MM-DD")
       );
-
-      // Get approved leaves
-      const leaves = await LeaveRequest.findAll({
-        where: {
-          userId,
-          status: "approved",
-          [Op.or]: [
-            {
-              startDate: {
-                [Op.between]: [startDate.toDate(), endDate.toDate()],
-              },
-            },
-            {
-              endDate: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
-            },
-          ],
-        },
-      });
       const leaveDays = new Set();
       leaves.forEach((leave) => {
-        let current = moment(leave.startDate);
-        while (current <= moment(leave.endDate)) {
-          leaveDays.add(current.format("YYYY-MM-DD"));
-          current.add(1, "day");
+        let d = moment(leave.startDate);
+        while (d <= moment(leave.endDate)) {
+          leaveDays.add(d.format("YYYY-MM-DD"));
+          d.add(1, "day");
         }
       });
 
-      // Get attendances
-      const attendances = await Attendance.findAll({
-        where: {
-          userId,
-          date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
-        },
-      });
       const attendanceMap = {};
       attendances.forEach((att) => {
         attendanceMap[moment(att.date).format("YYYY-MM-DD")] = att;
       });
 
-      // Calculate
-      let totalLateMin = 0;
-      let totalExtraMin = 0;
-      let totalAbsentDays = 0;
-      let totalPresentDays = 0;
-      let totalHalfDays = 0;
-      let totalHolidays = holidayDates.length;
-      let totalLeaves = leaveDays.size;
+      let totalLateMin = 0,
+        totalExtraMin = 0,
+        totalAbsentDays = 0,
+        totalPresentDays = 0,
+        totalHalfDays = 0;
       let netPay = 0;
 
-      // Loop through each day in month
-      let currentDate = startDate.clone();
-      let expectedWorkingDays = 0;
-      while (currentDate <= endDate) {
-        const dayStr = currentDate.format("YYYY-MM-DD");
-        const isWeekend = currentDate.day() === 0 || currentDate.day() === 6;
+      let current = startDate.clone();
+      while (current <= endDate) {
+        const dayStr = current.format("YYYY-MM-DD");
+        const isWeekend = [0, 6].includes(current.day());
         const isHoliday = holidayDates.includes(dayStr);
+        const isLeave = leaveDays.has(dayStr);
+        const att = attendanceMap[dayStr];
 
-        if (!isWeekend && !isHoliday) {
-          expectedWorkingDays++;
-        }
-
-        // Find effective salary for this day
-        let daySalary = 0;
+        // Effective salary
+        let daySalary = user.baseSalary;
         for (let i = salaryHistories.length - 1; i >= 0; i--) {
-          if (moment(salaryHistories[i].startDate) <= currentDate) {
+          if (moment(salaryHistories[i].startDate) <= current) {
             daySalary = salaryHistories[i].salary;
             break;
           }
         }
-        if (!daySalary) daySalary = user.baseSalary || 0; // Fallback
-
-        const dailyRate = daySalary / endDate.date(); // Simple: divide by calendar days, can adjust to expectedWorkingDays
+        const dailyRate = daySalary / endDate.date();
         const hourlyRate = dailyRate / user.requiredDailyHours;
-        const overtimeRate = hourlyRate * 1.5; // Assumption: 1.5x for overtime
+        const overtimeRate = hourlyRate * 1.5;
 
-        if (isWeekend || isHoliday) {
-          // No deduction, but if extra work marked, pay overtime
-          const att = attendanceMap[dayStr];
-          if (att && att.extraMinutes > 0) {
+        if (isWeekend || isHoliday || isLeave) {
+          if (att?.type === "present" && att.extraMinutes > 0) {
             netPay += (att.extraMinutes / 60) * overtimeRate;
             totalExtraMin += att.extraMinutes;
           }
+          // No deduction
         } else {
-          // Working day
-          const isLeave = leaveDays.has(dayStr);
-          const att = attendanceMap[dayStr];
-
-          if (isLeave) {
-            // Paid full (assumption: paid leave)
-            netPay += dailyRate;
-            // Count as present? No, but no deduction
-          } else if (att) {
-            let dayPay = dailyRate;
-            if (att.isFullAbsent) {
+          if (att) {
+            if (att.type === "absent") {
               totalAbsentDays++;
-              dayPay = 0;
-            } else if (att.isHalfDay) {
-              totalHalfDays++;
-              dayPay = dailyRate / 2;
-            } else {
-              totalPresentDays++;
+              if (!att.isHalfDay) netPay -= dailyRate;
+              else {
+                totalHalfDays++;
+                netPay -= dailyRate / 2;
+              }
+            } else if (att.type === "present") {
+              let pay = dailyRate;
+              if (att.isHalfDay) {
+                totalHalfDays++;
+                pay = dailyRate / 2;
+              } else {
+                totalPresentDays++;
+              }
+              pay -= (att.lateMinutes / 60) * hourlyRate;
+              pay += (att.extraMinutes / 60) * overtimeRate;
+              netPay += pay;
+
+              totalLateMin += att.lateMinutes;
+              totalExtraMin += att.extraMinutes;
             }
-            // Late deduction
-            const lateHours = att.lateMinutes / 60;
-            dayPay -= lateHours * hourlyRate;
-            totalLateMin += att.lateMinutes;
-
-            // Extra pay
-            const extraHours = att.extraMinutes / 60;
-            dayPay += extraHours * overtimeRate;
-            totalExtraMin += att.extraMinutes;
-
-            netPay += dayPay;
           } else {
-            // No record: absent
             totalAbsentDays++;
           }
         }
 
-        currentDate.add(1, "day");
+        current.add(1, "day");
       }
-
-      // Deductions (additional if needed, but included in dayPay)
-      const deductions = totalAbsentDays * (user.baseSalary / endDate.date()); // Example
 
       const details = {
         baseSalary: user.baseSalary,
@@ -434,19 +617,11 @@ const PayrollService = {
         totalAbsentDays,
         totalPresentDays,
         totalHalfDays,
-        totalHolidays,
-        totalLeaves,
-        expectedWorkingDays,
-        deductions,
-        netPay: Math.max(0, netPay), // Ensure non-negative
-        // For PDF: add more like daily breakdowns if needed
+        netPay: Math.max(0, netPay),
+        expectedWorkingDays: 0, // can calculate
       };
 
-      return {
-        status: true,
-        message: "Salary details calculated",
-        data: details,
-      };
+      return { status: true, message: "Salary calculated", data: details };
     } catch (error) {
       return { status: false, message: error.message };
     }
@@ -478,11 +653,86 @@ const PayrollService = {
     }
   },
 
-  // Extra: Get release history
+  // NEW: Full release history (admin view)
+  async getFullReleaseHistory(query = {}) {
+    try {
+      const {
+        page = 1,
+        pageSize = 20,
+        userId,
+        month,
+        startDate,
+        endDate,
+      } = query;
+
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 20;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      if (userId) where.userId = Number(userId);
+      if (month) where.month = month;
+
+      if (startDate || endDate) {
+        where.releaseDate = {};
+        if (startDate) where.releaseDate[Op.gte] = startDate;
+        if (endDate) where.releaseDate[Op.lte] = endDate;
+      }
+
+      const { count, rows } = await PayrollRelease.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            attributes: ["id", "fullName", "email", "role"],
+          },
+          {
+            model: User,
+            as: "releaser",
+            attributes: ["id", "fullName"],
+          },
+        ],
+        order: [["releaseDate", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "Full release history fetched",
+        data: {
+          history: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
+    } catch (error) {
+      console.error("getFullReleaseHistory error:", error);
+      return { status: false, message: error.message };
+    }
+  },
+
+  // Existing: Get single user history
   async getReleaseHistory(userId) {
     try {
       const history = await PayrollRelease.findAll({
         where: { userId },
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            attributes: ["fullName", "email"],
+          },
+          { model: User, as: "releaser", attributes: ["fullName"] },
+        ],
         order: [["month", "DESC"]],
       });
       return { status: true, data: history };

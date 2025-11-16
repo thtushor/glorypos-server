@@ -5,21 +5,32 @@ const requestHandler = require("../utils/requestHandler");
 const { addShopAccess } = require("../middleware/shopAccessMiddleware"); // Assume similar auth
 
 const router = express.Router();
-// Mark multiple attendance
 router.post(
-  "/attendance/multiple",
+  "/attendance/present/multiple",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.markMultipleAttendance(
+    const result = await PayrollService.markMultiplePresent(
       req.user.id,
-      req.body // { userIds: [...] } // in this field userIds is array of UserRoleIds
+      req.body
     );
     res.status(result.status ? 200 : 400).json(result);
   })
 );
 
-// Update single attendance
+router.post(
+  "/attendance/absent/multiple",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.markMultipleAbsent(
+      req.user.id,
+      req.body
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
 router.post(
   "/attendance/:userId",
   AuthService.authenticate,
@@ -28,7 +39,22 @@ router.post(
     const result = await PayrollService.updateAttendance(
       req.user.id,
       req.params.userId,
-      req.body // { date, lateMinutes, ... }
+      req.body
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+router.delete(
+  "/attendance/:userId",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const { date } = req.query;
+    const result = await PayrollService.deleteAttendance(
+      req.user.id,
+      req.params.userId,
+      date
     );
     res.status(result.status ? 200 : 400).json(result);
   })
@@ -45,6 +71,17 @@ router.post(
       req.body
     );
     res.status(result.status ? 201 : 400).json(result);
+  })
+);
+
+// === GET LEAVE HISTORY (Admin) ===
+router.get(
+  "/leave/history",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getLeaveHistory(req.user.id, req.query);
+    res.status(result.status ? 200 : 400).json(result);
   })
 );
 
@@ -95,6 +132,27 @@ router.post(
     res.status(result.status ? 200 : 400).json(result);
   })
 );
+// GET promotion history for ONE employee (any admin)
+router.get(
+  "/promotion/history/:userId",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getPromotionHistory(req.params.userId);
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// GET promotion history for ALL employees (any admin)
+router.get(
+  "/promotion/history",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getAllPromotionHistory(req.query);
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
 
 // Get salary details (case 5)
 router.get(
@@ -125,6 +183,17 @@ router.post(
       releasedAmount,
       details
     );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// Get full release history
+router.get(
+  "/release/history",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getFullReleaseHistory(req.query);
     res.status(result.status ? 200 : 400).json(result);
   })
 );

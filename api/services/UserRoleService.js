@@ -239,23 +239,20 @@ const UserRoleService = {
       };
     }
   },
-
   async getChildUsers(accessibleShopIds, query = {}) {
     try {
       const page = parseInt(query.page) || 1;
       const pageSize = parseInt(query.pageSize) || 10;
       const offset = (page - 1) * pageSize;
 
-      // Build where clause - filter by accessible shop IDs
+      // Base where clause
       const whereClause = {
         parentUserId: { [Op.in]: accessibleShopIds },
       };
 
-      // Add role and status filters
       if (query.role) whereClause.role = query.role;
       if (query.status) whereClause.status = query.status;
 
-      // Add search conditions
       if (query.searchKey) {
         whereClause[Op.or] = [
           { fullName: { [Op.like]: `%${query.searchKey}%` } },
@@ -264,50 +261,82 @@ const UserRoleService = {
         ];
       }
 
-      // Get total count for pagination
+      // === TOTAL COUNT ===
       const totalCount = await UserRole.count({ where: whereClause });
 
-      // Get paginated results
+      // === FETCH USERS ===
       const childUsers = await UserRole.findAll({
         where: whereClause,
         attributes: { exclude: ["password"] },
-        include: [
-          {
-            model: User,
-            as: "parent",
-          },
-        ],
+        include: [{ model: User, as: "parent" }],
         order: [["createdAt", "DESC"]],
         limit: pageSize,
         offset: offset,
       });
 
-      // ✅ Conditional attendance lookup only for payroll
+      // === ATTENDANCE TODAY ===
       if (query.withAttendance === "true") {
         const today = moment().format("YYYY-MM-DD");
         const userIds = childUsers.map((u) => u.id);
 
         const todaysAttendance = await Attendance.findAll({
-          attributes: ["userId"],
           where: {
             userId: { [Op.in]: userIds },
             date: today,
           },
+          attributes: [
+            "userId",
+            "type",
+            "isHalfDay",
+            "reason",
+            "notes",
+            "lateMinutes",
+            "extraMinutes",
+            "date",
+          ],
         });
 
-        const presentIds = new Set(todaysAttendance.map((a) => a.userId));
+        const attendanceMap = {};
+        todaysAttendance.forEach((a) => {
+          attendanceMap[a.userId] = {
+            type: a.type,
+            isHalfDay: a.isHalfDay,
+            reason: a.reason,
+            notes: a.notes,
+            lateMinutes: a.lateMinutes || 0,
+            extraMinutes: a.extraMinutes || 0,
+            date: a.date,
+          };
+        });
 
         childUsers.forEach((user) => {
-          user.dataValues.isPresentToday = presentIds.has(user.id);
-          user.dataValues.attendanceDate = today; // <-- send today’s date
+          const att = attendanceMap[user.id];
+          if (att) {
+            user.dataValues.attendanceType = att.type; // "present" | "absent"
+            user.dataValues.attendanceDate = att.date;
+            user.dataValues.isHalfDay = att.isHalfDay;
+            user.dataValues.reason = att.reason;
+            user.dataValues.notes = att.notes;
+            user.dataValues.lateMinutes = att.lateMinutes;
+            user.dataValues.extraMinutes = att.extraMinutes;
+          } else {
+            user.dataValues.attendanceType = null;
+            user.dataValues.attendanceDate = null;
+            user.dataValues.isHalfDay = false;
+            user.dataValues.reason = null;
+            user.dataValues.notes = null;
+            user.dataValues.lateMinutes = 0;
+            user.dataValues.extraMinutes = 0;
+          }
         });
       }
 
+      // === RESPONSE: EXACTLY MATCHES FRONTEND ===
       return {
         status: true,
         message: "Child users retrieved successfully",
         data: {
-          users: childUsers,
+          users: childUsers.map((u) => u.dataValues),
           pagination: {
             page,
             pageSize,
@@ -318,6 +347,7 @@ const UserRoleService = {
         },
       };
     } catch (error) {
+      console.error("getChildUsers error:", error);
       return {
         status: false,
         message: "Failed to retrieve child users",
