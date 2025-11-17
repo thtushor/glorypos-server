@@ -4,11 +4,11 @@ const { Op } = require('sequelize');
 
 // Service
 const OrderService = {
-    async create(orderData, userId) {
+    async create(orderData, userId, accessibleShopIds) {
         const transaction = await sequelize.transaction();
         try {
             // Validate and calculate prices for all items
-            const { validatedItems, subtotal } = await this.validateOrderItems(orderData?.items, userId, transaction);
+            const { validatedItems, subtotal } = await this.validateOrderItems(orderData?.items, transaction, accessibleShopIds);
 
             // Calculate tax and total
             const tax = orderData?.tax || 0;
@@ -22,7 +22,7 @@ const OrderService = {
             const order = await Order.create({
                 ...orderData,
                 orderNumber,
-                UserId: { [Op.in]: accessibleShopIds },
+                UserId: userId,
                 orderDate: new Date(),
                 subtotal,
                 tax,
@@ -67,7 +67,7 @@ const OrderService = {
                         ProductId: productId,
                         ProductVariantId: variantId,
                         OrderId: order.id,
-                        UserId: { [Op.in]: accessibleShopIds },
+                        UserId: userId,
                         note: `Order ${orderNumber}`
                     }, { transaction });
                 } else {
@@ -79,7 +79,7 @@ const OrderService = {
                         newStock,
                         ProductId: productId,
                         OrderId: order.id,
-                        UserId: { [Op.in]: accessibleShopIds },
+                        UserId: userId,
                         note: `Order ${orderNumber}`
                     }, { transaction });
                 }
@@ -255,11 +255,24 @@ const OrderService = {
                 orderStatus: 'completed'
             };
 
+            // if (dateRange?.startDate && dateRange?.endDate) {
+            //     whereClause.orderDate = {
+            //         [Op.between]: [dateRange.startDate, dateRange.endDate]
+            //     };
+            // }
+
             if (dateRange?.startDate && dateRange?.endDate) {
+                const start = new Date(dateRange.startDate);
+                start.setHours(0, 0, 0, 0); // start of day
+
+                const end = new Date(dateRange.endDate);
+                end.setHours(23, 59, 59, 999); // end of day
+
                 whereClause.orderDate = {
-                    [Op.between]: [dateRange.startDate, dateRange.endDate]
+                    [Op.between]: [start, end]
                 };
             }
+
 
             const orders = await Order.findAll({
                 where: whereClause,
@@ -323,10 +336,17 @@ const OrderService = {
         try {
             const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
             if (query.startDate && query.endDate) {
+                const start = new Date(query.startDate);
+                start.setHours(0, 0, 0, 0); // Start of the day
+            
+                const end = new Date(query.endDate);
+                end.setHours(23, 59, 59, 999); // End of the day
+            
                 whereClause.orderDate = {
-                    [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
+                    [Op.between]: [start, end]
                 };
             }
+            
 
             const orders = await Order.findAll({
                 where: whereClause,
@@ -383,10 +403,6 @@ const OrderService = {
     async generateInvoice(orderId, accessibleShopIds) {
         try {
 
-
-            const userData = await User.findByPk(userId);
-
-
             const order = await Order.findOne({
                 where: {
                     id: Number(orderId),
@@ -421,6 +437,8 @@ const OrderService = {
                     error: "Order not found or unauthorized"
                 };
             }
+
+            const userData = await User.findByPk(order.UserId);
 
             // Format invoice data
             const invoiceData = {
@@ -646,7 +664,7 @@ const OrderService = {
         }
     },
 
-    async validateOrderItems(items, userId, transaction) {
+    async validateOrderItems(items, transaction, accessibleShopIds) {
         const validatedItems = [];
         let subtotal = 0;
 
