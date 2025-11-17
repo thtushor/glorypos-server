@@ -32,6 +32,10 @@ const ProductService = {
                 }
             }
 
+            if(query.status){
+                whereClause.status = query.status;
+            }
+
             // Add category filter if provided
             if (query.categoryId) {
                 const categoryId = parseInt(query.categoryId);
@@ -61,6 +65,10 @@ const ProductService = {
                     const maxPrice = parseFloat(query.maxPrice);
                     whereClause.price[Op.lte] = maxPrice;
                 }
+            }
+
+            if(query?.sku){
+                whereClause.sku = query.sku;
             }
 
             // Add search functionality
