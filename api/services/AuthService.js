@@ -450,7 +450,7 @@ const AuthService = {
 
             // Build where clause - filter by parent_id
             const whereClause = {
-                parent_id: userId
+                // parent_id: undefined
             };
 
             // Apply shop access filter - only return shops the user has access to
@@ -499,13 +499,23 @@ const AuthService = {
                 offset
             });
 
+            const modifiedRows = await Promise.all(rows.map(async (row) => {
+                const parentUser = await User.findByPk(row.parent_id);
+                if (parentUser) {
+                    return {
+                        ...row.dataValues,
+                        parent: parentUser.dataValues
+                    }
+                }
+            }));
+
             const totalPages = Math.ceil(count / pageSize);
 
             return {
                 status: true,
                 message: "Sub shops retrieved successfully",
                 data: {
-                    users: rows,
+                    users: modifiedRows,
                     pagination: {
                         page,
                         pageSize,

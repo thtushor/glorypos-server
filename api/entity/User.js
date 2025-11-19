@@ -96,6 +96,12 @@ const User = sequelize.define(
             },
             comment: "Foreign key to parent user (shop). Null means this is a parent shop.",
         },
+        stuffCommission: {
+            type: Sequelize.DECIMAL(10, 2),
+            allowNull: true,
+            defaultValue: 0,
+            comment: "Commission percentage for staff users",
+        },
 
     }
 );
