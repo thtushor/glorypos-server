@@ -1,4 +1,4 @@
-const { Size } = require('../entity');
+const { Size, User } = require('../entity');
 const { Op } = require('sequelize');
 
 const SizeService = {
@@ -32,14 +32,40 @@ const SizeService = {
 
     async getAll(query = {}, accessibleShopIds) {
         try {
-            const whereClause = Object.keys(query).reduce((acc, key) => {
-                if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
-                    acc[key] = query[key];
-                }
-                return acc;
-            }, { UserId: { [Op.in]: accessibleShopIds } });
+            // Build where clause with shop access
+            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
 
-            const sizes = await Size.findAll({ where: whereClause });
+            // Add shopId filter if provided
+            if (query.shopId) {
+                const shopId = parseInt(query.shopId);
+                if (accessibleShopIds.includes(shopId)) {
+                    whereClause.UserId = shopId;
+                }
+            }
+
+            // Add search functionality
+            if (query.searchKey) {
+                whereClause[Op.or] = [
+                    { name: { [Op.like]: `%${query.searchKey}%` } },
+                    { description: { [Op.like]: `%${query.searchKey}%` } }
+                ];
+            }
+
+            // Add other filters if provided (excluding searchKey and shopId)
+            const { searchKey, shopId, ...otherFilters } = query;
+            Object.keys(otherFilters).forEach(key => {
+                if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
+                    whereClause[key] = otherFilters[key];
+                }
+            });
+
+            const sizes = await Size.findAll({
+                where: whereClause, include: [
+                    {
+                        model: User
+                    }
+                ]
+            });
             return { status: true, message: "Sizes retrieved successfully", data: sizes };
         } catch (error) {
             return { status: false, message: "Failed to retrieve sizes", data: null, error };
@@ -80,7 +106,7 @@ const SizeService = {
                 const existingSize = await Size.findOne({
                     where: {
                         name: updateData.name,
-                        UserId: userId,
+                        UserId: size.UserId,
                         id: { [Op.ne]: id }
                     }
                 });

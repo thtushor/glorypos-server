@@ -2,6 +2,32 @@ const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, Us
 const sequelize = require('../db');
 const { Op } = require('sequelize');
 
+const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
+    const normalizedIds = (accessibleShopIds || [])
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id));
+
+    if (!requestedShopId) {
+        return normalizedIds;
+    }
+
+    const parsedShopId = Number(requestedShopId);
+
+    if (Number.isNaN(parsedShopId)) {
+        const error = new Error('Invalid shopId');
+        error.isClientError = true;
+        throw error;
+    }
+
+    if (!normalizedIds.includes(parsedShopId)) {
+        const error = new Error('Unauthorized shop access');
+        error.isClientError = true;
+        throw error;
+    }
+
+    return [parsedShopId];
+};
+
 // Service
 const OrderService = {
     async create(orderData, userId, accessibleShopIds) {
@@ -113,7 +139,8 @@ const OrderService = {
             const offset = (page - 1) * pageSize;
 
             // Build where clause
-            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
+            const whereClause = { UserId: { [Op.in]: targetShopIds } };
 
             // Add search functionality
             if (query.searchKey) {
@@ -186,7 +213,7 @@ const OrderService = {
         } catch (error) {
             return {
                 status: false,
-                message: "Failed to retrieve orders",
+                message: error.isClientError ? error.message : "Failed to retrieve orders",
                 error: error.message
             };
         }
@@ -248,10 +275,11 @@ const OrderService = {
         }
     },
 
-    async getDashboardStats(accessibleShopIds, dateRange) {
+    async getDashboardStats(accessibleShopIds, dateRange = {}) {
         try {
+            const targetShopIds = resolveShopFilter(accessibleShopIds, dateRange.shopId);
             const whereClause = {
-                UserId: { [Op.in]: accessibleShopIds },
+                UserId: { [Op.in]: targetShopIds },
                 orderStatus: 'completed'
             };
 
@@ -326,7 +354,7 @@ const OrderService = {
         } catch (error) {
             return {
                 status: false,
-                message: "Failed to retrieve dashboard statistics",
+                message: error.isClientError ? error.message : "Failed to retrieve dashboard statistics",
                 error: error.message
             };
         }
@@ -334,7 +362,8 @@ const OrderService = {
 
     async getSalesReport(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
+            const whereClause = { UserId: { [Op.in]: targetShopIds } };
             if (query.startDate && query.endDate) {
                 const start = new Date(query.startDate);
                 start.setHours(0, 0, 0, 0); // Start of the day
@@ -394,7 +423,7 @@ const OrderService = {
         } catch (error) {
             return {
                 status: false,
-                message: "Failed to generate sales report",
+                message: error.isClientError ? error.message : "Failed to generate sales report",
                 error: error.message
             };
         }
@@ -524,7 +553,8 @@ const OrderService = {
 
     async getTopSellingItems(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
+            const whereClause = { UserId: { [Op.in]: targetShopIds } };
             if (query.startDate && query.endDate) {
                 whereClause.orderDate = {
                     [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
@@ -612,7 +642,7 @@ const OrderService = {
             console.log({ error });
             return {
                 status: false,
-                message: "Failed to retrieve top selling items",
+                message: error.isClientError ? error.message : "Failed to retrieve top selling items",
                 error: error.message
             };
         }
@@ -620,7 +650,8 @@ const OrderService = {
 
     async getTopCustomers(accessibleShopIds, query = {}) {
         try {
-            const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
+            const whereClause = { UserId: { [Op.in]: targetShopIds } };
             if (query.startDate && query.endDate) {
                 whereClause.orderDate = {
                     [Op.between]: [new Date(query.startDate), new Date(query.endDate)]
@@ -658,7 +689,7 @@ const OrderService = {
         } catch (error) {
             return {
                 status: false,
-                message: "Failed to retrieve top customers",
+                message: error.isClientError ? error.message : "Failed to retrieve top customers",
                 error: error.message
             };
         }
@@ -757,13 +788,14 @@ const OrderService = {
     async getSalesChartData(accessibleShopIds, query = {}) {
         try {
             const { startDate, endDate } = query;
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
 
             if (!startDate || !endDate) {
                 throw new Error("Start date and end date are required");
             }
 
             const whereClause = {
-                UserId: { [Op.in]: accessibleShopIds },
+                UserId: { [Op.in]: targetShopIds },
                 orderStatus: 'completed',
                 orderDate: {
                     [Op.between]: [new Date(startDate), new Date(endDate)]
@@ -855,7 +887,7 @@ const OrderService = {
             console.error(error);
             return {
                 status: false,
-                message: "Failed to generate sales chart data",
+                message: error.isClientError ? error.message : "Failed to generate sales chart data",
                 error: error.message
             };
         }
