@@ -326,33 +326,118 @@ const PayrollService = {
   },
 
   // Case 7: Add holiday
-  async addHoliday(adminId, { date, description }) {
+  async addHoliday(adminId, { startDate, endDate, description }) {
     try {
-      if (!moment(date, "YYYY-MM-DD", true).isValid()) {
-        throw new Error("Invalid date");
+      const start = moment(startDate, "YYYY-MM-DD", true);
+      const end = moment(endDate, "YYYY-MM-DD", true);
+
+      if (!start.isValid() || !end.isValid()) {
+        throw new Error("Invalid date format. Use YYYY-MM-DD");
+      }
+      if (start.isAfter(end)) {
+        throw new Error("endDate cannot be before startDate");
       }
 
-      // Assume adminId is super admin or manager, no check for now
+      const holiday = await Holiday.create({
+        startDate: start.format("YYYY-MM-DD"),
+        endDate: end.format("YYYY-MM-DD"),
+        description: description.trim(),
+        createdBy: adminId, // this admin added = approved
+      });
 
-      const holiday = await Holiday.create({ date, description });
-
-      return { status: true, message: "Holiday added", data: holiday };
+      return {
+        status: true,
+        message: "Holiday added successfully",
+        data: holiday,
+      };
     } catch (error) {
-      return { status: false, message: error.message };
+      return {
+        status: false,
+        message: error.message || "Failed to add holiday",
+      };
     }
   },
 
   // Case 7: Get holidays
-  async getHolidays({ startDate, endDate }) {
+  async getHolidays(query = {}) {
     try {
+      const {
+        page = 1,
+        pageSize = 10,
+        startDate,
+        endDate,
+        year, // extra useful filter for BD companies
+      } = query;
+
+      // CRITICAL: Always convert to numbers
+      const pageNum = Math.max(1, Number(page) || 1);
+      const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 10)); // limit max 100
+      const offset = (pageNum - 1) * pageSizeNum;
+
       const where = {};
-      if (startDate && endDate) {
-        where.date = { [Op.between]: [startDate, endDate] };
+
+      // Date range filter (on startDate or endDate overlapping)
+      if (startDate || endDate) {
+        where[Op.or] = [];
+        if (startDate) {
+          where[Op.or].push({ startDate: { [Op.gte]: startDate } });
+          where[Op.or].push({ endDate: { [Op.gte]: startDate } });
+        }
+        if (endDate) {
+          where[Op.or].push({ startDate: { [Op.lte]: endDate } });
+          where[Op.or].push({ endDate: { [Op.lte]: endDate } });
+        }
       }
-      const holidays = await Holiday.findAll({ where });
-      return { status: true, data: holidays };
+
+      // Year filter (very common in Bangladesh)
+      if (year) {
+        const yearInt = Number(year);
+        if (!isNaN(yearInt)) {
+          where.startDate = {
+            [Op.gte]: `${yearInt}-01-01`,
+            [Op.lte]: `${yearInt}-12-31`,
+          };
+        }
+      }
+
+      const { count, rows } = await Holiday.findAndCountAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: "creator",
+            attributes: ["id", "fullName", "email"], // or just "name" if you use that
+            required: true,
+          },
+        ],
+        order: [["startDate", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+        attributes: ["id", "startDate", "endDate", "description", "createdAt"],
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "Holidays fetched successfully",
+        data: {
+          holidays: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
     } catch (error) {
-      return { status: false, message: error.message };
+      console.error("GetHolidays Error:", error);
+      return {
+        status: false,
+        message: error.message || "Failed to fetch holidays",
+      };
     }
   },
 

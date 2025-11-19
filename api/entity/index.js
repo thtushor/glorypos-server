@@ -121,8 +121,15 @@ User.hasMany(LeaveRequest, {
   as: "approvedLeaves",
 });
 
-UserRole.hasMany(Holiday, { foreignKey: "adminId" });
-Holiday.belongsTo(UserRole, { foreignKey: "adminId" });
+// New correct lines
+Holiday.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "creator",
+});
+User.hasMany(Holiday, {
+  foreignKey: "createdBy",
+  as: "createdHolidays",
+});
 
 UserRole.hasMany(PayrollRelease, { foreignKey: "userId" });
 PayrollRelease.belongsTo(UserRole, { foreignKey: "userId", as: "UserRole" });
