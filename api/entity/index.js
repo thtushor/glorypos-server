@@ -101,14 +101,37 @@ SubscriptionPlan.hasMany(UserSubscription);
 UserRole.hasMany(Attendance, { foreignKey: "userId" });
 Attendance.belongsTo(UserRole, { foreignKey: "userId" });
 
-UserRole.hasMany(LeaveRequest, { foreignKey: "userId" });
-LeaveRequest.belongsTo(UserRole, { foreignKey: "userId" });
+// 1. Employee (requester)
+LeaveRequest.belongsTo(UserRole, {
+  foreignKey: "userId",
+  as: "employee",
+});
+UserRole.hasMany(LeaveRequest, {
+  foreignKey: "userId",
+  as: "leaveRequests",
+});
+
+// 2. Approver (admin who approved)
+LeaveRequest.belongsTo(User, {
+  foreignKey: "approvedBy",
+  as: "approver",
+});
+User.hasMany(LeaveRequest, {
+  foreignKey: "approvedBy",
+  as: "approvedLeaves",
+});
 
 UserRole.hasMany(Holiday, { foreignKey: "adminId" });
 Holiday.belongsTo(UserRole, { foreignKey: "adminId" });
 
 UserRole.hasMany(PayrollRelease, { foreignKey: "userId" });
-PayrollRelease.belongsTo(UserRole, { foreignKey: "userId" });
+PayrollRelease.belongsTo(UserRole, { foreignKey: "userId", as: "UserRole" });
+
+User.hasMany(PayrollRelease, {
+  foreignKey: "releasedBy",
+  as: "releasedSalaries",
+});
+PayrollRelease.belongsTo(User, { foreignKey: "releasedBy", as: "releaser" });
 
 UserRole.hasMany(SalaryHistory, { foreignKey: "userId" });
 SalaryHistory.belongsTo(UserRole, { foreignKey: "userId" });
