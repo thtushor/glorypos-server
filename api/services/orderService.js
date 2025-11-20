@@ -112,10 +112,11 @@ const OrderService = {
                 }
             }
 
-            if (req?.body?.stuffId) {
+            if (orderData?.stuffId) {
                 await StuffCommissionService.recordFromOrder({
                     order,
-                    stuffId: Number(req?.body?.stuffId),
+                    stuffId: Number(orderData?.stuffId),
+                    accessibleShopIds,
                     transaction,
                 });
             }

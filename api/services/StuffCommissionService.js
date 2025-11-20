@@ -30,7 +30,7 @@ const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
 };
 
 const StuffCommissionService = {
-    async recordFromOrder({ order, stuffId, transaction }) {
+    async recordFromOrder({ order, stuffId,accessibleShopIds, transaction }) {
         if (!stuffId || !order) {
             return null;
         }
@@ -42,10 +42,15 @@ const StuffCommissionService = {
             throw error;
         }
 
+        console.log('staffId', staffId);
+
         const staff = await UserRole.findOne({
             where: {
                 id: staffId,
-                parentUserId: order.UserId,
+                parentUserId: {
+                    [Op.in]: accessibleShopIds,
+                },
+                // parentUserId: order.UserId,
             },
             transaction,
         });
