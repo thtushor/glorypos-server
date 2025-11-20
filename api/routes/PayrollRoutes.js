@@ -155,16 +155,21 @@ router.get(
 );
 
 // Get salary details (case 5)
-router.get(
-  "/salary/:userId/:month",
+router.post(
+  "/salary/details",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.getSalaryDetails(
-      req.user.id,
-      req.params.userId,
-      req.params.month
+    const { userId, startDate, endDate } = req.body;
+    const adminId = req.user.id;
+
+    const result = await PayrollService.getSalaryDetailsInRange(
+      adminId,
+      userId,
+      startDate,
+      endDate
     );
+
     res.status(result.status ? 200 : 400).json(result);
   })
 );

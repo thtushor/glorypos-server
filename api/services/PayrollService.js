@@ -326,33 +326,118 @@ const PayrollService = {
   },
 
   // Case 7: Add holiday
-  async addHoliday(adminId, { date, description }) {
+  async addHoliday(adminId, { startDate, endDate, description }) {
     try {
-      if (!moment(date, "YYYY-MM-DD", true).isValid()) {
-        throw new Error("Invalid date");
+      const start = moment(startDate, "YYYY-MM-DD", true);
+      const end = moment(endDate, "YYYY-MM-DD", true);
+
+      if (!start.isValid() || !end.isValid()) {
+        throw new Error("Invalid date format. Use YYYY-MM-DD");
+      }
+      if (start.isAfter(end)) {
+        throw new Error("endDate cannot be before startDate");
       }
 
-      // Assume adminId is super admin or manager, no check for now
+      const holiday = await Holiday.create({
+        startDate: start.format("YYYY-MM-DD"),
+        endDate: end.format("YYYY-MM-DD"),
+        description: description.trim(),
+        createdBy: adminId, // this admin added = approved
+      });
 
-      const holiday = await Holiday.create({ date, description });
-
-      return { status: true, message: "Holiday added", data: holiday };
+      return {
+        status: true,
+        message: "Holiday added successfully",
+        data: holiday,
+      };
     } catch (error) {
-      return { status: false, message: error.message };
+      return {
+        status: false,
+        message: error.message || "Failed to add holiday",
+      };
     }
   },
 
   // Case 7: Get holidays
-  async getHolidays({ startDate, endDate }) {
+  async getHolidays(query = {}) {
     try {
+      const {
+        page = 1,
+        pageSize = 10,
+        startDate,
+        endDate,
+        year, // extra useful filter for BD companies
+      } = query;
+
+      // CRITICAL: Always convert to numbers
+      const pageNum = Math.max(1, Number(page) || 1);
+      const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 10)); // limit max 100
+      const offset = (pageNum - 1) * pageSizeNum;
+
       const where = {};
-      if (startDate && endDate) {
-        where.date = { [Op.between]: [startDate, endDate] };
+
+      // Date range filter (on startDate or endDate overlapping)
+      if (startDate || endDate) {
+        where[Op.or] = [];
+        if (startDate) {
+          where[Op.or].push({ startDate: { [Op.gte]: startDate } });
+          where[Op.or].push({ endDate: { [Op.gte]: startDate } });
+        }
+        if (endDate) {
+          where[Op.or].push({ startDate: { [Op.lte]: endDate } });
+          where[Op.or].push({ endDate: { [Op.lte]: endDate } });
+        }
       }
-      const holidays = await Holiday.findAll({ where });
-      return { status: true, data: holidays };
+
+      // Year filter (very common in Bangladesh)
+      if (year) {
+        const yearInt = Number(year);
+        if (!isNaN(yearInt)) {
+          where.startDate = {
+            [Op.gte]: `${yearInt}-01-01`,
+            [Op.lte]: `${yearInt}-12-31`,
+          };
+        }
+      }
+
+      const { count, rows } = await Holiday.findAndCountAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: "creator",
+            attributes: ["id", "fullName", "email"], // or just "name" if you use that
+            required: true,
+          },
+        ],
+        order: [["startDate", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+        attributes: ["id", "startDate", "endDate", "description", "createdAt"],
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "Holidays fetched successfully",
+        data: {
+          holidays: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
     } catch (error) {
-      return { status: false, message: error.message };
+      console.error("GetHolidays Error:", error);
+      return {
+        status: false,
+        message: error.message || "Failed to fetch holidays",
+      };
     }
   },
 
@@ -496,132 +581,393 @@ const PayrollService = {
   },
 
   // Case 5,6: Get salary details for month (preview)
-  async getSalaryDetails(adminId, userId, month) {
+  async getSalaryDetailsInRange(adminId, userId, startDate, endDate) {
     try {
-      const startDate = moment(month + "-01", "YYYY-MM-DD");
-      const endDate = startDate.clone().endOf("month");
-      if (!startDate.isValid()) throw new Error("Invalid month");
+      const start = moment(startDate);
+      const end = moment(endDate);
+
+      if (!start.isValid() || !end.isValid() || start > end) {
+        throw new Error("Invalid startDate or endDate");
+      }
 
       const user = await UserRole.findOne({
         where: { id: userId, parentUserId: adminId },
+        attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
       });
-      if (!user || !user.requiredDailyHours)
-        throw new Error("User not found or incomplete");
 
-      const [holidays, leaves, attendances, salaryHistories] =
-        await Promise.all([
-          Holiday.findAll({
-            where: {
-              date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
-            },
-          }),
-          LeaveRequest.findAll({ where: { userId, status: "approved" } }),
-          Attendance.findAll({
-            where: {
-              userId,
-              date: { [Op.between]: [startDate.toDate(), endDate.toDate()] },
-            },
-          }),
-          SalaryHistory.findAll({
-            where: { userId },
-            order: [["startDate", "ASC"]],
-          }),
-        ]);
+      if (!user || !user.baseSalary || !user.requiredDailyHours) {
+        throw new Error("User not found or salary/hours not configured");
+      }
 
-      const holidayDates = holidays.map((h) =>
-        moment(h.date).format("YYYY-MM-DD")
-      );
-      const leaveDays = new Set();
-      leaves.forEach((leave) => {
-        let d = moment(leave.startDate);
-        while (d <= moment(leave.endDate)) {
-          leaveDays.add(d.format("YYYY-MM-DD"));
+      const baseSalary = parseFloat(user.baseSalary);
+      const requiredDailyHours = parseInt(user.requiredDailyHours);
+
+      const weekendDays = process.env.WEEKEND_DAYS
+        ? process.env.WEEKEND_DAYS.split(",").map(Number)
+        : [5, 6]; // Friday & Saturday
+
+      const [holidays, approvedLeaves, attendances] = await Promise.all([
+        Holiday.findAll({
+          where: {
+            startDate: { [Op.lte]: endDate },
+            endDate: { [Op.gte]: startDate },
+          },
+        }),
+        LeaveRequest.findAll({
+          where: {
+            userId,
+            status: "approved",
+            startDate: { [Op.lte]: endDate },
+            endDate: { [Op.gte]: startDate },
+          },
+        }),
+        Attendance.findAll({
+          where: {
+            userId,
+            date: { [Op.gte]: startDate, [Op.lte]: endDate },
+          },
+          attributes: [
+            "date",
+            "type",
+            "isHalfDay",
+            "lateMinutes",
+            "extraMinutes",
+          ],
+          raw: true,
+        }),
+      ]);
+
+      // Build holiday & leave sets
+      const holidayDates = new Set();
+      holidays.forEach((h) => {
+        let d = moment(h.startDate);
+        const e = moment(h.endDate);
+        while (d <= e) {
+          holidayDates.add(d.format("YYYY-MM-DD"));
           d.add(1, "day");
         }
       });
 
-      const attendanceMap = {};
-      attendances.forEach((att) => {
-        attendanceMap[moment(att.date).format("YYYY-MM-DD")] = att;
+      const leaveDates = new Set();
+      approvedLeaves.forEach((leave) => {
+        let d = moment(leave.startDate);
+        const e = moment(leave.endDate);
+        while (d <= e) {
+          leaveDates.add(d.format("YYYY-MM-DD"));
+          d.add(1, "day");
+        }
       });
 
-      let totalLateMin = 0,
-        totalExtraMin = 0,
-        totalAbsentDays = 0,
-        totalPresentDays = 0,
-        totalHalfDays = 0;
-      let netPay = 0;
+      // Attendance map
+      const attendanceMap = {};
+      attendances.forEach((att) => {
+        attendanceMap[att.date] = att;
+      });
 
-      let current = startDate.clone();
-      while (current <= endDate) {
-        const dayStr = current.format("YYYY-MM-DD");
-        const isWeekend = [0, 6].includes(current.day());
-        const isHoliday = holidayDates.includes(dayStr);
-        const isLeave = leaveDays.has(dayStr);
-        const att = attendanceMap[dayStr];
+      // Counters
+      let totalWorkingDays = 0;
+      let totalWeekendDays = 0;
+      let totalAbsentMinutes = 0;
+      let totalExtraMinutes = 0;
+      let totalHolidayDays = 0;
+      let totalLeaveDays = 0;
 
-        // Effective salary
-        let daySalary = user.baseSalary;
-        for (let i = salaryHistories.length - 1; i >= 0; i--) {
-          if (moment(salaryHistories[i].startDate) <= current) {
-            daySalary = salaryHistories[i].salary;
-            break;
-          }
-        }
-        const dailyRate = daySalary / endDate.date();
-        const hourlyRate = dailyRate / user.requiredDailyHours;
-        const overtimeRate = hourlyRate * 1.5;
+      // STRING-BASED LOOP - 100% SAFE
+      let currentDateStr = startDate;
 
-        if (isWeekend || isHoliday || isLeave) {
-          if (att?.type === "present" && att.extraMinutes > 0) {
-            netPay += (att.extraMinutes / 60) * overtimeRate;
-            totalExtraMin += att.extraMinutes;
-          }
-          // No deduction
-        } else {
-          if (att) {
-            if (att.type === "absent") {
-              totalAbsentDays++;
-              if (!att.isHalfDay) netPay -= dailyRate;
-              else {
-                totalHalfDays++;
-                netPay -= dailyRate / 2;
-              }
-            } else if (att.type === "present") {
-              let pay = dailyRate;
-              if (att.isHalfDay) {
-                totalHalfDays++;
-                pay = dailyRate / 2;
-              } else {
-                totalPresentDays++;
-              }
-              pay -= (att.lateMinutes / 60) * hourlyRate;
-              pay += (att.extraMinutes / 60) * overtimeRate;
-              netPay += pay;
+      while (currentDateStr <= endDate) {
+        const dayOfWeek = moment(currentDateStr).day();
 
-              totalLateMin += att.lateMinutes;
-              totalExtraMin += att.extraMinutes;
-            }
-          } else {
-            totalAbsentDays++;
-          }
+        // Skip weekends
+        if (weekendDays.includes(dayOfWeek)) {
+          totalWeekendDays++;
+          currentDateStr = moment(currentDateStr)
+            .add(1, "day")
+            .format("YYYY-MM-DD");
+          continue;
         }
 
-        current.add(1, "day");
+        // Every non-weekend day is a paid working day
+        totalWorkingDays++;
+
+        // CHECK ATTENDANCE FIRST (Critical!)
+        const att = attendanceMap[currentDateStr];
+        let absentMinutesToday = 0;
+
+        if (att) {
+          if (att.type === "absent") {
+            absentMinutesToday = requiredDailyHours * 60; // Full day absent
+          } else if (att.type === "present") {
+            if (att.isHalfDay)
+              absentMinutesToday += requiredDailyHours * 60 * 0.5;
+            if (att.lateMinutes > 0)
+              absentMinutesToday += parseInt(att.lateMinutes);
+            if (att.extraMinutes > 0)
+              totalExtraMinutes += parseInt(att.extraMinutes);
+          }
+        }
+        // No record = full present
+
+        totalAbsentMinutes += absentMinutesToday;
+
+        // Count holidays & leaves (for display only)
+        if (holidayDates.has(currentDateStr)) totalHolidayDays++;
+        if (leaveDates.has(currentDateStr)) totalLeaveDays++;
+
+        // Next day
+        currentDateStr = moment(currentDateStr)
+          .add(1, "day")
+          .format("YYYY-MM-DD");
       }
 
-      const details = {
-        baseSalary: user.baseSalary,
-        totalLateMin,
-        totalExtraMin,
-        totalAbsentDays,
-        totalPresentDays,
-        totalHalfDays,
-        netPay: Math.max(0, netPay),
-        expectedWorkingDays: 0, // can calculate
+      // Final calculations
+      const netAbsentMinutes = Math.max(
+        0,
+        totalAbsentMinutes - totalExtraMinutes
+      );
+      const netAbsentHours = Number((netAbsentMinutes / 60).toFixed(2));
+
+      const requiredTotalHours = Number(
+        (totalWorkingDays * requiredDailyHours).toFixed(2)
+      );
+      const workedHours = Number(
+        (requiredTotalHours - netAbsentHours).toFixed(2)
+      );
+
+      const totalMinutesIn30Days = 30 * requiredDailyHours * 60;
+      const perMinuteRate = baseSalary / totalMinutesIn30Days;
+      const netSalary = Number(
+        (totalMinutesIn30Days - netAbsentMinutes) * perMinuteRate
+      ).toFixed(2);
+
+      const data = {
+        userId,
+        fullName: user.fullName,
+        startDate,
+        endDate,
+        baseSalary,
+        requiredDailyHours,
+        totalWorkingDays,
+        totalWeekendDays,
+        requiredTotalHours,
+        workedHours,
+        absentHours: netAbsentHours,
+        overtimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
+        totalLeaveDays,
+        totalHolidayDays,
+        netSalary: Math.max(0, parseFloat(netSalary)),
       };
 
-      return { status: true, message: "Salary calculated", data: details };
+      return {
+        status: true,
+        message: "Salary calculated successfully",
+        data,
+      };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async getSalaryDetailsInRange(adminId, userId, startDate, endDate) {
+    try {
+      const start = moment(startDate);
+      const end = moment(endDate);
+
+      if (!start.isValid() || !end.isValid() || start > end) {
+        throw new Error("Invalid startDate or endDate");
+      }
+
+      const user = await UserRole.findOne({
+        where: { id: userId, parentUserId: adminId },
+        attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
+      });
+
+      if (!user || !user.baseSalary || !user.requiredDailyHours) {
+        throw new Error("User not found or salary/hours not configured");
+      }
+
+      const baseSalary = parseFloat(user.baseSalary);
+      const requiredDailyHours = parseInt(user.requiredDailyHours);
+
+      const weekendDays = process.env.WEEKEND_DAYS
+        ? process.env.WEEKEND_DAYS.split(",").map(Number)
+        : [3]; // Friday
+
+      const [holidays, approvedLeaves, attendances] = await Promise.all([
+        Holiday.findAll({
+          where: {
+            startDate: { [Op.lte]: endDate },
+            endDate: { [Op.gte]: startDate },
+          },
+        }),
+        LeaveRequest.findAll({
+          where: {
+            userId,
+            status: "approved",
+            startDate: { [Op.lte]: endDate },
+            endDate: { [Op.gte]: startDate },
+          },
+        }),
+        Attendance.findAll({
+          where: {
+            userId,
+            date: { [Op.gte]: startDate, [Op.lte]: endDate },
+          },
+          attributes: [
+            "date",
+            "type",
+            "isHalfDay",
+            "lateMinutes",
+            "extraMinutes",
+          ],
+          raw: true,
+        }),
+      ]);
+
+      console.log("holidays", holidays);
+
+      // Build holiday & leave sets
+      const holidayDates = new Set();
+      holidays.forEach((h) => {
+        let d = moment(h.startDate);
+        const e = moment(h.endDate);
+        while (d <= e) {
+          holidayDates.add(d.format("YYYY-MM-DD"));
+          d.add(1, "day");
+        }
+      });
+
+      const leaveDates = new Set();
+      approvedLeaves.forEach((leave) => {
+        let d = moment(leave.startDate);
+        const e = moment(leave.endDate);
+        while (d <= e) {
+          leaveDates.add(d.format("YYYY-MM-DD"));
+          d.add(1, "day");
+        }
+      });
+
+      // Attendance map - keys are exact string dates from DB
+      const attendanceMap = {};
+      attendances.forEach((att) => {
+        attendanceMap[att.date] = att;
+      });
+
+      // console.log("attendanceMap", attendanceMap);
+
+      // Counters
+      let totalWorkingDays = 0;
+      let totalWeekendDays = 0;
+      let totalAbsentMinutes = 0;
+      let totalExtraMinutes = 0;
+      let totalHolidayDays = 0;
+      let totalLeaveDays = 0;
+
+      // STRING-BASED LOOP - 100% SAFE FROM TIMEZONE ISSUES
+      let currentDateStr = startDate; // e.g. "2025-11-01"
+      console.log(currentDateStr, "<=>", currentDateStr);
+      while (currentDateStr <= endDate) {
+        const dayOfWeek = moment(currentDateStr).day();
+
+        if (weekendDays.includes(dayOfWeek)) {
+          totalWeekendDays++;
+          currentDateStr = moment(currentDateStr)
+            .add(1, "day")
+            .format("YYYY-MM-DD");
+          continue;
+        }
+
+        if (holidayDates.has(currentDateStr)) {
+          totalHolidayDays++;
+          totalWorkingDays++;
+          currentDateStr = moment(currentDateStr)
+            .add(1, "day")
+            .format("YYYY-MM-DD");
+          continue;
+        }
+
+        if (leaveDates.has(currentDateStr)) {
+          totalLeaveDays++;
+          totalWorkingDays++;
+          currentDateStr = moment(currentDateStr)
+            .add(1, "day")
+            .format("YYYY-MM-DD");
+          continue;
+        }
+
+        totalWorkingDays++;
+
+        // console.log("currentDateStr up", "<=>", currentDateStr);
+        // console.log("attendanceMap", "<=>", attendanceMap);
+        const att = attendanceMap[currentDateStr]; // EXACT MATCH - WILL BE FOUND
+        // console.log("Date:", currentDateStr, "Attendance:", att);
+
+        let absentMinutesToday = 0;
+
+        if (att) {
+          if (att.type === "absent") {
+            // FULL DAY ABSENT - ALWAYS 8 HOURS
+            absentMinutesToday = requiredDailyHours * 60;
+          } else if (att.type === "present") {
+            if (att.isHalfDay)
+              absentMinutesToday += requiredDailyHours * 60 * 0.5;
+            if (att.lateMinutes > 0)
+              absentMinutesToday += parseInt(att.lateMinutes);
+            if (att.extraMinutes > 0)
+              totalExtraMinutes += parseInt(att.extraMinutes);
+          }
+        }
+        // No record = full present = 0 absent minutes
+
+        totalAbsentMinutes += absentMinutesToday;
+        currentDateStr = moment(currentDateStr)
+          .add(1, "day")
+          .format("YYYY-MM-DD");
+      }
+
+      // Final calculations
+      const netAbsentMinutes = Math.max(
+        0,
+        totalAbsentMinutes - totalExtraMinutes
+      );
+      const netAbsentHours = Number((netAbsentMinutes / 60).toFixed(2));
+
+      const requiredTotalHours = Number(
+        (totalWorkingDays * requiredDailyHours).toFixed(2)
+      );
+      const workedHours = Number(
+        (requiredTotalHours - netAbsentHours).toFixed(2)
+      );
+
+      const totalMinutesIn30Days = 30 * requiredDailyHours * 60;
+      const perMinuteRate = baseSalary / totalMinutesIn30Days;
+      const netSalary = Number(
+        (totalMinutesIn30Days - netAbsentMinutes) * perMinuteRate
+      ).toFixed(2);
+
+      const data = {
+        userId,
+        fullName: user.fullName,
+        startDate,
+        endDate,
+        baseSalary,
+        requiredDailyHours,
+        totalWorkingDays,
+        totalWeekendDays,
+        requiredTotalHours,
+        workedHours,
+        absentHours: netAbsentHours,
+        overtimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
+        totalLeaveDays,
+        totalHolidayDays,
+        netSalary: Math.max(0, parseFloat(netSalary)),
+      };
+
+      return {
+        status: true,
+        message: "Salary calculated successfully",
+        data,
+      };
     } catch (error) {
       return { status: false, message: error.message };
     }
