@@ -40,7 +40,37 @@ const OrderService = {
             // Calculate tax and total
             const tax = orderData?.tax || 0;
             const discount = orderData?.discount || 0;
-            const total = subtotal + tax;
+            const total = subtotal + tax - discount;
+
+            // Handle partial payments
+            const cashAmount = Number(orderData?.cashAmount || 0);
+            const cardAmount = Number(orderData?.cardAmount || 0);
+            const walletAmount = Number(orderData?.walletAmount || 0);
+            const paidAmount = cashAmount + cardAmount + walletAmount;
+
+            // Determine payment method and status
+            let paymentMethod = orderData?.paymentMethod || "cash";
+            let paymentStatus = "pending";
+
+            if (paidAmount > 0) {
+                if (paidAmount >= total) {
+                    paymentStatus = "completed";
+                } else {
+                    paymentStatus = "partial";
+                }
+
+                // Determine payment method based on amounts
+                const paymentMethods = [];
+                if (cashAmount > 0) paymentMethods.push("cash");
+                if (cardAmount > 0) paymentMethods.push("card");
+                if (walletAmount > 0) paymentMethods.push("wallet");
+
+                if (paymentMethods.length > 1) {
+                    paymentMethod = "mixed";
+                } else if (paymentMethods.length === 1) {
+                    paymentMethod = paymentMethods[0];
+                }
+            }
 
             // Generate unique order number
             const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -54,7 +84,13 @@ const OrderService = {
                 subtotal,
                 tax,
                 discount,
-                total
+                total,
+                cashAmount,
+                cardAmount,
+                walletAmount,
+                paidAmount,
+                paymentMethod,
+                paymentStatus
             }, { transaction });
 
             // Process order items and update stock
@@ -112,13 +148,20 @@ const OrderService = {
                 }
             }
 
-            if (orderData?.stuffId) {
-                await StuffCommissionService.recordFromOrder({
-                    order,
-                    stuffId: Number(orderData?.stuffId),
-                    accessibleShopIds,
-                    transaction,
-                });
+            // Create commission if stuffId is provided
+            if (orderData?.stuffId && orderData.stuffId.toString().trim() !== '') {
+                try {
+                    await StuffCommissionService.recordFromOrder({
+                        order,
+                        stuffId: Number(orderData.stuffId),
+                        accessibleShopIds,
+                        transaction,
+                    });
+                } catch (commissionError) {
+                    // Log commission error but don't fail the order creation
+                    console.error('Commission creation error:', commissionError.message);
+                    // Optionally, you might want to handle this differently
+                }
             }
 
             await transaction.commit();

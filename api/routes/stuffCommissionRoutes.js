@@ -19,6 +19,21 @@ router.get(
   })
 );
 
+// Get commission statistics
+router.get(
+  "/stats",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await StuffCommissionService.getStats(
+      req.accessibleShopIds,
+      req.query
+    );
+
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
 module.exports = router;
 
 

@@ -100,24 +100,48 @@ const StuffCommissionService = {
             },
         };
 
+        // Filter by staff/stuff ID
         if (query.stuffId) {
-            whereClause.UserRoleId = Number(query.stuffId);
+            const stuffId = Number(query.stuffId);
+            if (!Number.isNaN(stuffId)) {
+                whereClause.UserRoleId = stuffId;
+            }
         }
 
+        // Filter by order ID
         if (query.orderId) {
-            whereClause.OrderId = Number(query.orderId);
+            const orderId = Number(query.orderId);
+            if (!Number.isNaN(orderId)) {
+                whereClause.OrderId = orderId;
+            }
         }
 
+        // Filter by commission amount range
         if (query.minAmount || query.maxAmount) {
             whereClause.commissionAmount = {};
             if (query.minAmount) {
-                whereClause.commissionAmount[Op.gte] = Number(query.minAmount);
+                const minAmount = Number(query.minAmount);
+                if (!Number.isNaN(minAmount)) {
+                    whereClause.commissionAmount[Op.gte] = minAmount;
+                }
             }
             if (query.maxAmount) {
-                whereClause.commissionAmount[Op.lte] = Number(query.maxAmount);
+                const maxAmount = Number(query.maxAmount);
+                if (!Number.isNaN(maxAmount)) {
+                    whereClause.commissionAmount[Op.lte] = maxAmount;
+                }
             }
         }
 
+        // Filter by exact commission amount
+        if (query.commissionAmount) {
+            const commissionAmount = Number(query.commissionAmount);
+            if (!Number.isNaN(commissionAmount)) {
+                whereClause.commissionAmount = commissionAmount;
+            }
+        }
+
+        // Date range filter
         if (query.startDate && query.endDate) {
             const start = new Date(query.startDate);
             start.setHours(0, 0, 0, 0);
@@ -126,25 +150,50 @@ const StuffCommissionService = {
             whereClause.createdAt = {
                 [Op.between]: [start, end],
             };
+        } else if (query.startDate) {
+            const start = new Date(query.startDate);
+            start.setHours(0, 0, 0, 0);
+            whereClause.createdAt = {
+                [Op.gte]: start,
+            };
+        } else if (query.endDate) {
+            const end = new Date(query.endDate);
+            end.setHours(23, 59, 59, 999);
+            whereClause.createdAt = {
+                [Op.lte]: end,
+            };
+        }
+
+        // Filter by staff role
+        const includeStaff = {
+            model: UserRole,
+            as: "staff",
+            attributes: ["id", "fullName", "email", "phone", "role"],
+            required: false,
+        };
+        
+        if (query.staffRole) {
+            includeStaff.where = {
+                role: query.staffRole,
+            };
+            includeStaff.required = true;
         }
 
         const { rows, count } = await StuffCommission.findAndCountAll({
             where: whereClause,
             include: [
-                {
-                    model: UserRole,
-                    as: "staff",
-                    attributes: ["id", "fullName", "email", "phone", "role"],
-                },
+                includeStaff,
                 {
                     model: User,
                     as: "shop",
                     attributes: ["id", "businessName", "fullName", "email"],
+                    required: false,
                 },
                 {
                     model: Order,
                     as: "order",
-                    attributes: ["id", "orderNumber", "total", "orderDate"],
+                    attributes: ["id", "orderNumber", "total", "orderDate", "paidAmount", "paymentStatus"],
+                    required: false,
                 },
             ],
             order: [["createdAt", "DESC"]],
@@ -152,19 +201,127 @@ const StuffCommissionService = {
             offset,
         });
 
+        // Calculate summary statistics
+        const summary = rows.reduce(
+            (acc, commission) => {
+                acc.totalCommission += Number(commission.commissionAmount || 0);
+                acc.totalOrders += 1;
+                return acc;
+            },
+            {
+                totalCommission: 0,
+                totalOrders: 0,
+            }
+        );
+
+        summary.averageCommission =
+            summary.totalOrders > 0
+                ? (summary.totalCommission / summary.totalOrders).toFixed(2)
+                : 0;
+
         return {
             status: true,
             message: "Commission history retrieved successfully",
             data: {
                 items: rows,
+                summary,
                 pagination: {
                     page,
                     pageSize,
                     totalItems: count,
                     totalPages: Math.ceil(count / pageSize),
+                    hasNextPage: page < Math.ceil(count / pageSize),
+                    hasPreviousPage: page > 1,
                 },
             },
         };
+    },
+
+    async getStats(accessibleShopIds = [], query = {}) {
+        try {
+            const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
+            const whereClause = {
+                UserId: {
+                    [Op.in]: targetShopIds,
+                },
+            };
+
+            // Date range filter for stats
+            if (query.startDate && query.endDate) {
+                const start = new Date(query.startDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(query.endDate);
+                end.setHours(23, 59, 59, 999);
+                whereClause.createdAt = {
+                    [Op.between]: [start, end],
+                };
+            }
+
+            // Filter by staff ID
+            if (query.stuffId) {
+                const stuffId = Number(query.stuffId);
+                if (!Number.isNaN(stuffId)) {
+                    whereClause.UserRoleId = stuffId;
+                }
+            }
+
+            const commissions = await StuffCommission.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: UserRole,
+                        as: "staff",
+                        attributes: ["id", "fullName", "role"],
+                    },
+                ],
+            });
+
+            const stats = commissions.reduce(
+                (acc, commission) => {
+                    acc.totalCommission += Number(commission.commissionAmount || 0);
+                    acc.totalOrders += 1;
+                    
+                    const staffId = commission.UserRoleId;
+                    if (!acc.byStaff[staffId]) {
+                        acc.byStaff[staffId] = {
+                            staffId,
+                            staffName: commission.staff?.fullName || "Unknown",
+                            staffRole: commission.staff?.role || "Unknown",
+                            totalCommission: 0,
+                            orderCount: 0,
+                        };
+                    }
+                    acc.byStaff[staffId].totalCommission += Number(commission.commissionAmount || 0);
+                    acc.byStaff[staffId].orderCount += 1;
+
+                    return acc;
+                },
+                {
+                    totalCommission: 0,
+                    totalOrders: 0,
+                    byStaff: {},
+                }
+            );
+
+            // Convert byStaff object to array
+            stats.byStaff = Object.values(stats.byStaff);
+            stats.averageCommission =
+                stats.totalOrders > 0
+                    ? (stats.totalCommission / stats.totalOrders).toFixed(2)
+                    : 0;
+
+            return {
+                status: true,
+                message: "Commission statistics retrieved successfully",
+                data: stats,
+            };
+        } catch (error) {
+            return {
+                status: false,
+                message: "Failed to retrieve commission statistics",
+                error: error.message,
+            };
+        }
     },
 };
 

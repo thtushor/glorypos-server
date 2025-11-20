@@ -51,12 +51,40 @@ const Order = sequelize.define('Order', {
         allowNull: false,
     },
     paymentMethod: {
-        type: Sequelize.ENUM("cash", "card", "mobile_banking"),
+        type: Sequelize.ENUM("cash", "card", "mobile_banking", "wallet", "mixed"),
         allowNull: false,
+        defaultValue: "cash",
+        comment: "Primary payment method or 'mixed' for partial payments"
+    },
+    // Partial payment tracking fields
+    cashAmount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+        comment: "Amount paid in cash"
+    },
+    cardAmount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+        comment: "Amount paid by card"
+    },
+    walletAmount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+        comment: "Amount paid from wallet"
+    },
+    paidAmount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Total amount paid (sum of cash, card, wallet)"
     },
     paymentStatus: {
-        type: Sequelize.ENUM("pending", "completed", "failed"),
+        type: Sequelize.ENUM("pending", "completed", "failed", "partial"),
         defaultValue: "pending",
+        comment: "Payment status: pending, completed, failed, or partial"
     },
     orderStatus: {
         type: Sequelize.ENUM("pending", "processing", "completed", "cancelled"),
