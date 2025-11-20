@@ -1,6 +1,7 @@
 const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, User } = require('../entity');
 const sequelize = require('../db');
 const { Op } = require('sequelize');
+const StuffCommissionService = require('./StuffCommissionService');
 
 const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
     const normalizedIds = (accessibleShopIds || [])
@@ -30,7 +31,7 @@ const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
 
 // Service
 const OrderService = {
-    async create(orderData, userId, accessibleShopIds) {
+    async create(orderData, userId, accessibleShopIds, stuffId) {
         const transaction = await sequelize.transaction();
         try {
             // Validate and calculate prices for all items
@@ -109,6 +110,14 @@ const OrderService = {
                         note: `Order ${orderNumber}`
                     }, { transaction });
                 }
+            }
+
+            if (stuffId) {
+                await StuffCommissionService.recordFromOrder({
+                    order,
+                    stuffId,
+                    transaction,
+                });
             }
 
             await transaction.commit();
@@ -367,15 +376,15 @@ const OrderService = {
             if (query.startDate && query.endDate) {
                 const start = new Date(query.startDate);
                 start.setHours(0, 0, 0, 0); // Start of the day
-            
+
                 const end = new Date(query.endDate);
                 end.setHours(23, 59, 59, 999); // End of the day
-            
+
                 whereClause.orderDate = {
                     [Op.between]: [start, end]
                 };
             }
-            
+
 
             const orders = await Order.findAll({
                 where: whereClause,

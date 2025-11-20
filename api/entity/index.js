@@ -13,6 +13,7 @@ const SubscriptionPlan = require("./SubscriptionPlan");
 const UserSubscription = require("./UserSubscription");
 const Coupon = require("./Coupon");
 const UserRole = require("./UserRole");
+const StuffCommission = require("./StuffCommission");
 
 // === PAYROLL MODELS ===
 const Attendance = require("./Attendance");
@@ -76,6 +77,8 @@ ProductVariant.belongsTo(Size);
 Order.belongsTo(User);
 Order.hasMany(OrderItem);
 OrderItem.belongsTo(Order);
+Order.hasMany(StuffCommission, { foreignKey: "OrderId", as: "commissions" });
+StuffCommission.belongsTo(Order, { foreignKey: "OrderId", as: "order" });
 
 // OrderItem Associations
 OrderItem.belongsTo(Product);
@@ -96,6 +99,22 @@ SubscriptionPlan.hasMany(UserSubscription);
 
 // UserRole Associations
 // UserRole.belongsTo(User, { as: "parent", foreignKey: "parentUserId" });
+UserRole.hasMany(StuffCommission, {
+  foreignKey: "UserRoleId",
+  as: "commissions",
+});
+StuffCommission.belongsTo(UserRole, {
+  foreignKey: "UserRoleId",
+  as: "staff",
+});
+User.hasMany(StuffCommission, {
+  foreignKey: "UserId",
+  as: "staffCommissionRecords",
+});
+StuffCommission.belongsTo(User, {
+  foreignKey: "UserId",
+  as: "shop",
+});
 
 // === PAYROLL ASSOCIATIONS ===
 UserRole.hasMany(Attendance, { foreignKey: "userId" });
@@ -159,6 +178,7 @@ module.exports = {
   UserSubscription,
   Coupon,
   UserRole,
+  StuffCommission,
   // === EXPORT PAYROLL MODELS ===
   Attendance,
   LeaveRequest,
