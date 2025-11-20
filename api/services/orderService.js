@@ -31,7 +31,7 @@ const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
 
 // Service
 const OrderService = {
-    async create(orderData, userId, accessibleShopIds, stuffId) {
+    async create(orderData, userId, accessibleShopIds) {
         const transaction = await sequelize.transaction();
         try {
             // Validate and calculate prices for all items
@@ -112,10 +112,10 @@ const OrderService = {
                 }
             }
 
-            if (stuffId) {
+            if (req?.body?.stuffId) {
                 await StuffCommissionService.recordFromOrder({
                     order,
-                    stuffId,
+                    stuffId: Number(req?.body?.stuffId),
                     transaction,
                 });
             }

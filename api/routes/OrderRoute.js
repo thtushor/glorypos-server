@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Create new order
 router.post('/', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
-    const result = await OrderService.create(req.body, req.user.id, req.accessibleShopIds, req.query?.stuffId);
+    const result = await OrderService.create(req.body, req.user.id, req.accessibleShopIds);
     res.status(result.status ? 201 : 400).json(result);
 }));
 
