@@ -1,5 +1,6 @@
 const { Order, OrderItem, Product, ProductVariant, Color, Size, User, UserRole, StuffCommission } = require('../entity');
 const { Op, Sequelize } = require('sequelize');
+const sequelize = require('../db');
 
 class StatementService {
     async getProductStatements(query = {}) {
@@ -156,12 +157,82 @@ class StatementService {
                 };
             }
 
-            // Get total count for pagination (using same includes as findAll)
-            const countIncludes = [
-                includeProduct,
-                includeProductVariant,
-                includeOrder
-            ];
+            // If filtering by userRoleId, get OrderIds first using a subquery approach
+            let filteredOrderIds = null;
+            if (query.userRoleId) {
+                const userRoleId = parseInt(query.userRoleId);
+                if (!Number.isNaN(userRoleId)) {
+                    // Get OrderIds from StuffCommission filtered by UserRoleId
+                    const commissionOrders = await StuffCommission.findAll({
+                        where: {
+                            UserRoleId: userRoleId
+                        },
+                        attributes: ['OrderId'],
+                        group: ['OrderId']
+                    });
+
+                    // Extract unique OrderIds
+                    filteredOrderIds = [...new Set(
+                        commissionOrders
+                            .map(comm => comm.OrderId || comm.get?.('OrderId'))
+                            .filter(id => id != null && id !== undefined)
+                    )];
+
+                    // If no orders found with this userRoleId, return empty result
+                    if (filteredOrderIds.length === 0) {
+                        return {
+                            status: true,
+                            message: "Product statements retrieved successfully",
+                            data: {
+                                statements: [],
+                                summary: {
+                                    totalSold: 0,
+                                    totalRevenue: 0,
+                                    totalCost: 0,
+                                    totalProfit: 0,
+                                    totalLoss: 0,
+                                    profitMargin: 0,
+                                    netProfit: 0
+                                },
+                                pagination: {
+                                    page,
+                                    pageSize,
+                                    totalPages: 0,
+                                    totalItems: 0,
+                                    hasNextPage: false,
+                                    hasPreviousPage: false
+                                }
+                            }
+                        };
+                    }
+                }
+            }
+
+            // Build count includes - simplify when userRoleId filter is applied
+            let countIncludes;
+            let countOrderWhereClause = { ...orderWhereClause };
+
+            if (filteredOrderIds) {
+                // Merge OrderId filter with existing order filters
+                countOrderWhereClause.id = { [Op.in]: filteredOrderIds };
+                countIncludes = [
+                    includeProduct,
+                    includeProductVariant,
+                    {
+                        model: Order,
+                        where: countOrderWhereClause,
+                        required: true,
+                        attributes: []
+                    }
+                ];
+            } else {
+                // Use full includes when no userRoleId filter
+                countIncludes = [
+                    includeProduct,
+                    includeProductVariant,
+                    includeOrder
+                ];
+            }
 
             const totalCount = await OrderItem.count({
                 where: whereClause,
@@ -171,13 +242,37 @@ class StatementService {
 
             const totalPages = Math.ceil(totalCount / pageSize);
 
+            // Build simplified Order include when filtering by userRoleId
+            let findOrderInclude;
+            if (filteredOrderIds) {
+                // Merge OrderId filter with existing order filters
+                const findOrderWhereClause = { ...orderWhereClause };
+                findOrderWhereClause.id = { [Op.in]: filteredOrderIds };
+
+                // Use simplified Order include with OrderId filter (without nested commissions)
+                findOrderInclude = {
+                    model: Order,
+                    where: findOrderWhereClause,
+                    required: true,
+                    include: [
+                        {
+                            model: User,
+                            required: false
+                        }
+                    ]
+                };
+            } else {
+                // Use full Order include with commissions
+                findOrderInclude = includeOrder;
+            }
+
             // Get paginated statements
             const statements = await OrderItem.findAll({
                 where: whereClause,
                 include: [
                     includeProduct,
                     includeProductVariant,
-                    includeOrder
+                    findOrderInclude
                 ],
                 order: [['createdAt', 'DESC']],
                 limit: pageSize,
@@ -189,7 +284,7 @@ class StatementService {
             const summaryIncludes = [
                 includeProduct,
                 includeProductVariant,
-                includeOrder
+                findOrderInclude
             ];
 
             const allFilteredItems = await OrderItem.findAll({
