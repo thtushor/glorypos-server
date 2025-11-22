@@ -1084,8 +1084,6 @@ const PayrollService = {
 
       const totalPages = Math.ceil(count / pageSizeNum);
 
-      console.log(JSON.stringify(rows));
-
       // Format response with readable dates
       const history = rows.map((r) => ({
         id: r.id,
