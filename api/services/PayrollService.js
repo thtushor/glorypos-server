@@ -974,55 +974,91 @@ const PayrollService = {
   },
 
   // Extra: Release salary, save history (case 5,8)
-  async releaseSalary(adminId, userId, month, releasedAmount, details) {
+  async releaseSalary(
+    adminId,
+    userId,
+    startDate,
+    endDate,
+    releasedAmount,
+    details
+  ) {
     try {
-      // Validate
       const existing = await PayrollRelease.findOne({
-        where: { userId, month },
+        where: {
+          userId,
+          startDate: { [Op.lte]: endDate }, // existing period starts before new ends
+          endDate: { [Op.gte]: startDate }, // existing period ends after new starts
+        },
       });
+
       if (existing) {
-        throw new Error("Already released for this month");
+        throw new Error(
+          `Salary already released for ${moment(startDate).format(
+            "DD MMM YYYY"
+          )} – ${moment(endDate).format("DD MMM YYYY")} (฿${
+            existing.releasedAmount
+          } on ${moment(existing.releaseDate).format("DD MMM YYYY")})`
+        );
       }
 
       const release = await PayrollRelease.create({
         userId,
-        month,
+        startDate,
+        endDate,
         releasedAmount,
         details,
         releaseDate: new Date(),
         releasedBy: adminId,
       });
 
-      return { status: true, message: "Salary released", data: release };
+      return {
+        status: true,
+        message: "Salary paid successfully!",
+        data: release,
+      };
     } catch (error) {
       return { status: false, message: error.message };
     }
   },
 
   // NEW: Full release history (admin view)
+  // PayrollService.js - Updated for startDate/endDate system
   async getFullReleaseHistory(query = {}) {
     try {
       const {
         page = 1,
         pageSize = 20,
         userId,
-        month,
-        startDate,
-        endDate,
+        startDate, // e.g. "2025-11-01"
+        endDate, // e.g. "2025-11-30"
+        periodStart, // Optional: filter by salary period start
+        periodEnd, // Optional: filter by salary period end
       } = query;
 
-      const pageNum = Number(page) || 1;
-      const pageSizeNum = Number(pageSize) || 20;
+      const pageNum = Math.max(1, Number(page) || 1);
+      const pageSizeNum = Math.max(1, Math.min(100, Number(pageSize) || 20));
       const offset = (pageNum - 1) * pageSizeNum;
 
+      // Build WHERE conditions
       const where = {};
-      if (userId) where.userId = Number(userId);
-      if (month) where.month = month;
 
+      if (userId) {
+        where.userId = Number(userId);
+      }
+
+      // Filter by salary period (most useful)
+      if (periodStart || periodEnd) {
+        where.startDate = {};
+        if (periodStart) where.startDate[Op.gte] = periodStart;
+        if (periodEnd) where.startDate[Op.lte] = periodEnd;
+      }
+
+      // OR: Filter by when salary was released
       if (startDate || endDate) {
         where.releaseDate = {};
         if (startDate) where.releaseDate[Op.gte] = startDate;
-        if (endDate) where.releaseDate[Op.lte] = endDate;
+        if (endDate)
+          where.releaseDate[Op.lte] = new Date(endDate + "T23:59:59.999Z"); // include full day
       }
 
       const { count, rows } = await PayrollRelease.findAndCountAll({
@@ -1031,26 +1067,45 @@ const PayrollService = {
           {
             model: UserRole,
             as: "UserRole",
-            attributes: ["id", "fullName", "email", "role"],
+            attributes: ["id", "fullName", "email", "role", "baseSalary"],
           },
           {
             model: User,
-            as: "releaser",
+            as: "releaser", // the admin who released
             attributes: ["id", "fullName"],
           },
         ],
         order: [["releaseDate", "DESC"]],
         limit: pageSizeNum,
         offset,
+        distinct: true,
+        col: "id",
       });
 
       const totalPages = Math.ceil(count / pageSizeNum);
 
+      // Format response with readable dates
+      const history = rows.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        fullName: r.UserRole?.fullName || "Unknown",
+        email: r.UserRole?.email || "Unknown",
+        role: r.UserRole?.role || "-",
+        period: `${moment(r.startDate).format("DD MMM YYYY")} – ${moment(
+          r.endDate
+        ).format("DD MMM YYYY")}`,
+        releasedAmount: Number(r.releasedAmount),
+        releasedOn: moment(r.releaseDate).format("DD MMM YYYY, hh:mm A"),
+        releaserId: r.releaser?.id || "System",
+        releaserFullname: r.releaser?.fullName || "System",
+        details: r.details || {},
+      }));
+
       return {
         status: true,
-        message: "Full release history fetched",
+        message: "Salary release history fetched successfully",
         data: {
-          history: rows,
+          history,
           pagination: {
             page: pageNum,
             pageSize: pageSizeNum,
@@ -1062,7 +1117,10 @@ const PayrollService = {
       };
     } catch (error) {
       console.error("getFullReleaseHistory error:", error);
-      return { status: false, message: error.message };
+      return {
+        status: false,
+        message: error.message || "Failed to fetch release history",
+      };
     }
   },
 
