@@ -30,7 +30,7 @@ const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
 };
 
 const StuffCommissionService = {
-    async recordFromOrder({ order, stuffId,accessibleShopIds, transaction }) {
+    async recordFromOrder({ order, stuffId, accessibleShopIds, transaction }) {
         if (!stuffId || !order) {
             return null;
         }
@@ -64,14 +64,14 @@ const StuffCommissionService = {
         const shop = await User.findByPk(order.UserId, { transaction });
 
         const percentage = Number(shop?.stuffCommission || 0);
-        if (!percentage || percentage <= 0) {
-            return null;
-        }
+        // if (!percentage || percentage <= 0) {
+        //     return null;
+        // }
 
-        const commissionAmount = Number(order.total || 0) * (percentage / 100);
+        let commissionAmount = Number(order.total || 0) * (percentage / 100);
 
         if (!commissionAmount || commissionAmount <= 0) {
-            return null;
+            commissionAmount = 0;
         }
 
         return StuffCommission.create(
@@ -79,7 +79,7 @@ const StuffCommissionService = {
                 baseAmount: order.total,
                 commissionAmount,
                 commissionPercentage: percentage,
-                notes: `Auto commission for order ${order.orderNumber}`,
+                notes: commissionAmount ? `Auto commission for order ${order.orderNumber}` : "",
                 UserRoleId: staff.id,
                 UserId: order.UserId,
                 OrderId: order.id,
@@ -171,7 +171,7 @@ const StuffCommissionService = {
             attributes: ["id", "fullName", "email", "phone", "role"],
             required: false,
         };
-        
+
         if (query.staffRole) {
             includeStaff.where = {
                 role: query.staffRole,
@@ -280,7 +280,7 @@ const StuffCommissionService = {
                 (acc, commission) => {
                     acc.totalCommission += Number(commission.commissionAmount || 0);
                     acc.totalOrders += 1;
-                    
+
                     const staffId = commission.UserRoleId;
                     if (!acc.byStaff[staffId]) {
                         acc.byStaff[staffId] = {

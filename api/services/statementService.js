@@ -44,7 +44,15 @@ class StatementService {
                             model: User,
                         }, {
                             model: StuffCommission,
-                            as: "commissions"
+                            as: "commissions",
+                            include: [{
+                                model: UserRole,
+                                as: "staff",
+                                include: [{
+                                    model: User,
+                                    as: "parent"
+                                }]
+                            }]
                         }],
                         where: whereClause
                     }

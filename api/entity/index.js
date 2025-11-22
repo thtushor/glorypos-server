@@ -77,7 +77,7 @@ ProductVariant.belongsTo(Size);
 Order.belongsTo(User);
 Order.hasMany(OrderItem);
 OrderItem.belongsTo(Order);
-Order.belongsTo(StuffCommission, { foreignKey: "OrderId", as: "commissions" });
+Order.hasMany(StuffCommission, { foreignKey: "OrderId", as: "commissions" });
 StuffCommission.belongsTo(Order, { foreignKey: "OrderId", as: "order" });
 
 // OrderItem Associations

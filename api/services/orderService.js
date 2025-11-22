@@ -1,4 +1,4 @@
-const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, User } = require('../entity');
+const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, User, StuffCommission, UserRole } = require('../entity');
 const sequelize = require('../db');
 const { Op } = require('sequelize');
 const StuffCommissionService = require('./StuffCommissionService');
@@ -242,7 +242,20 @@ const OrderService = {
                             ]
                         }
                     ]
-                }],
+                },
+                {
+                    model: StuffCommission,
+                    as: "commissions",
+                    include: [{
+                        model: UserRole,
+                        as: "staff",
+                        include: [{
+                            model: User,
+                            as: "parent"
+                        }]
+                    }]
+                }
+                ],
                 order: [['orderDate', 'DESC']],
                 limit: pageSize,
                 offset: offset
