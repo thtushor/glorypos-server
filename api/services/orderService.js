@@ -497,6 +497,7 @@ const OrderService = {
                             model: Product,
                             include: [
                                 { model: Color },
+                                { model: User },
                                 { model: Size }
                             ]
                         },
@@ -522,68 +523,165 @@ const OrderService = {
 
             const userData = await User.findByPk(order.UserId);
 
-            // Format invoice data
+            // Format invoice data with full order details
             const invoiceData = {
                 invoiceNumber: `INV-${order.orderNumber}`,
+                orderNumber: order.orderNumber,
                 date: order.orderDate,
+                orderStatus: order.orderStatus,
+
+                // Full order details
+                order: {
+                    id: order.id,
+                    orderNumber: order.orderNumber,
+                    orderDate: order.orderDate,
+                    orderStatus: order.orderStatus,
+                    subtotal: Number(order.subtotal),
+                    tax: Number(order.tax),
+                    discount: Number(order.discount),
+                    total: Number(order.total)
+                },
+
+                // Customer details
                 customer: {
                     name: order.customerName || 'Guest Customer',
                     phone: order.customerPhone || 'N/A',
                     email: order.customerEmail || 'N/A'
                 },
+
+                // Shop/User details
+                shop: {
+                    id: userData?.id,
+                    fullName: userData?.fullName,
+                    businessName: userData?.businessName || "FG-POS",
+                    businessType: userData?.businessType,
+                    location: userData?.location || "162/26 NaNai Road, PaTong, Kathu, Phuket- 83150, Thailand.",
+                    phoneNumber: userData?.phoneNumber || "+66910414319",
+                    email: userData?.email || "support@fashiongloryltd.com",
+                    accountStatus: userData?.accountStatus,
+                    accountType: userData?.accountType
+                },
+
+                // Product-wise details
                 items: order.OrderItems.map(item => {
-                    let productName, sku, details;
+                    let productName, sku, details, purchasePrice, salesPrice, vat, productImage;
+                    let colorName, sizeName, variantDetails = null;
+                    let shop;
 
                     if (item.ProductVariant) {
                         productName = item.ProductVariant?.Product?.name || "";
                         sku = item?.ProductVariant?.sku;
-                        details = `${item?.ProductVariant?.Color?.name} - ${item?.ProductVariant?.Size?.name}`;
+                        colorName = item?.ProductVariant?.Color?.name;
+                        sizeName = item?.ProductVariant?.Size?.name;
+                        details = colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName || '');
+                        purchasePrice = Number(item?.purchasePrice || item.ProductVariant?.Product?.purchasePrice || 0);
+                        salesPrice = Number(item.ProductVariant?.Product?.salesPrice || 0);
+                        vat = Number(item.ProductVariant?.Product?.vat || 0);
+                        productImage = item.ProductVariant?.imageUrl || item.ProductVariant?.Product?.productImage;
+                        variantDetails = {
+                            variantId: item.ProductVariant?.id,
+                            variantSku: item.ProductVariant?.sku,
+                            color: colorName,
+                            size: sizeName
+                        };
+                        shop = item.Product?.User
                     }
                     else if (item.Product) {
                         productName = item?.Product?.name;
                         sku = item?.Product?.sku;
-                        details = `${item?.Product?.Color?.name || ""} - ${item?.Product?.Size?.name || ""}`;
+                        colorName = item?.Product?.Color?.name;
+                        sizeName = item?.Product?.Size?.name;
+                        details = colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName || '');
+                        purchasePrice = Number(item?.purchasePrice || item?.Product?.purchasePrice || 0);
+                        salesPrice = Number(item?.Product?.salesPrice || 0);
+                        vat = Number(item?.Product?.vat || 0);
+                        productImage = item?.Product?.productImage;
+                        shop = item.Product?.User
                     }
 
+                    const unitPrice = Number(item.unitPrice);
+                    const quantity = Number(item.quantity);
+                    const itemSubtotal = Number(item.subtotal);
+                    const itemCost = purchasePrice * quantity;
+                    const itemProfit = itemSubtotal - itemCost;
+                    const itemProfitMargin = itemSubtotal > 0 ? ((itemProfit / itemSubtotal) * 100).toFixed(2) : '0.00';
+
                     return {
+                        id: item.id,
+                        productId: item.ProductId,
+                        variantId: item.ProductVariantId,
                         productName,
                         sku,
                         details,
-                        quantity: item.quantity,
-                        unitPrice: item.unitPrice,
-                        subtotal: item.subtotal
+                        color: colorName,
+                        size: sizeName,
+                        quantity,
+                        unitPrice,
+                        subtotal: itemSubtotal,
+                        purchasePrice,
+                        salesPrice,
+                        vat,
+                        productImage,
+                        itemCost,
+                        itemProfit: Number(itemProfit.toFixed(2)),
+                        itemProfitMargin: itemProfitMargin + '%',
+                        variantDetails,
+                        shop
                     };
                 }),
+
+                // Summary
                 summary: {
-                    subtotal: order.subtotal,
-                    tax: order.tax,
-                    taxRate: (order.tax / order.subtotal * 100).toFixed(2) + '%',
-                    discount: order.discount,
-                    discountRate: order.discount > 0 ?
-                        (order.discount / order.subtotal * 100).toFixed(2) + '%' : '0%',
-                    total: order.total
+                    subtotal: Number(order.subtotal),
+                    tax: Number(order.tax),
+                    taxRate: order.subtotal > 0 ? ((order.tax / order.subtotal) * 100).toFixed(2) + '%' : '0%',
+                    discount: Number(order.discount),
+                    discountRate: order.subtotal > 0 && order.discount > 0 ?
+                        ((order.discount / order.subtotal) * 100).toFixed(2) + '%' : '0%',
+                    total: Number(order.total)
                 },
+
+                // Full payment details
                 payment: {
                     method: order.paymentMethod,
-                    status: order.paymentStatus
+                    status: order.paymentStatus,
+                    cashAmount: Number(order.cashAmount || 0),
+                    cardAmount: Number(order.cardAmount || 0),
+                    walletAmount: Number(order.walletAmount || 0),
+                    paidAmount: Number(order.paidAmount || 0),
+                    totalAmount: Number(order.total),
+                    remainingAmount: Number((order.total - (order.paidAmount || 0)).toFixed(2)),
+                    isPaid: order.paymentStatus === 'completed',
+                    isPartial: order.paymentStatus === 'partial'
                 },
-                orderStatus: order.orderStatus,
+
+                // Business info
                 businessInfo: {
-                    name: userData?.businessName || "FG-POS", // You might want to make this configurable
+                    name: userData?.businessName || "FG-POS",
                     address: userData?.location || "162/26 NaNai Road, PaTong, Kathu, Phuket- 83150, Thailand.",
                     phone: userData?.phoneNumber || "+66910414319",
                     email: userData?.email || "support@fashiongloryltd.com",
-                    website: userData?.email || "https://fashion-glory-pos-system.vercel.app",
+                    website: "https://fashion-glory-pos-system.vercel.app",
                     taxId: "123456"
                 }
             };
 
             // Calculate additional statistics
+            const totalItems = order.OrderItems.reduce((sum, item) => sum + item.quantity, 0);
+            const totalCost = order.OrderItems.reduce((sum, item) => {
+                const itemPurchasePrice = Number(item?.purchasePrice || item?.Product?.purchasePrice || 0);
+                return sum + (itemPurchasePrice * item.quantity);
+            }, 0);
+            const totalProfit = Number(order.total) - totalCost;
+            const profitMargin = order.total > 0 ? ((totalProfit / order.total) * 100).toFixed(2) : '0.00';
+
             const stats = {
-                totalItems: order.OrderItems.reduce((sum, item) => sum + item.quantity, 0),
+                totalItems,
                 totalUniqueItems: order.OrderItems.length,
-                averageItemPrice: (order.subtotal /
-                    order.OrderItems.reduce((sum, item) => sum + item.quantity, 0)).toFixed(2)
+                averageItemPrice: totalItems > 0 ? (Number(order.subtotal) / totalItems).toFixed(2) : '0.00',
+                totalCost: Number(totalCost.toFixed(2)),
+                totalProfit: Number(totalProfit.toFixed(2)),
+                profitMargin: profitMargin + '%'
             };
 
             return {

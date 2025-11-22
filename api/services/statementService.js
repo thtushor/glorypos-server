@@ -1,4 +1,4 @@
-const { Order, OrderItem, Product, ProductVariant, Color, Size } = require('../entity');
+const { Order, OrderItem, Product, ProductVariant, Color, Size, User, UserRole, StuffCommission } = require('../entity');
 const { Op, Sequelize } = require('sequelize');
 
 class StatementService {
@@ -24,7 +24,11 @@ class StatementService {
                             model: Color
                         }, {
                             model: Size
-                        }]
+                        },
+                        {
+                            model: User
+                        }
+                        ]
                     },
                     {
                         model: ProductVariant,
@@ -36,6 +40,12 @@ class StatementService {
                     },
                     {
                         model: Order,
+                        include: [{
+                            model: User,
+                        }, {
+                            model: StuffCommission,
+                            as: "commissions"
+                        }],
                         where: whereClause
                     }
                 ],
