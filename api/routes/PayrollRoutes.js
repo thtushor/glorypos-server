@@ -180,11 +180,12 @@ router.post(
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const { userId, month, releasedAmount, details } = req.body;
+    const { userId, startDate, endDate, releasedAmount, details } = req.body;
     const result = await PayrollService.releaseSalary(
       req.user.id,
       userId,
-      month,
+      startDate,
+      endDate,
       releasedAmount,
       details
     );
