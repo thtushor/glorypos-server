@@ -101,10 +101,10 @@ const StuffCommissionService = {
         };
 
         // Filter by staff/stuff ID
-        if (query.stuffId) {
-            const stuffId = Number(query.stuffId);
-            if (!Number.isNaN(stuffId)) {
-                whereClause.UserRoleId = stuffId;
+        if (query.staffId) {
+            const staffId = Number(query.staffId);
+            if (!Number.isNaN(staffId)) {
+                whereClause.UserRoleId = staffId;
             }
         }
 
