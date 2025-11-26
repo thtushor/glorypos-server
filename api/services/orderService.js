@@ -589,12 +589,30 @@ const OrderService = {
                     let colorName, sizeName, variantDetails = null;
                     let shop;
 
+                    // Extract discount information from OrderItem
+                    const discountType = item.discountType || null;
+                    const unitDiscount = Number(item.unitDiscount || 0);
+                    const totalDiscount = Number(item.totalDiscount || 0);
+
                     if (item.ProductVariant) {
                         productName = item.ProductVariant?.Product?.name || "";
                         sku = item?.ProductVariant?.sku;
                         colorName = item?.ProductVariant?.Color?.name;
                         sizeName = item?.ProductVariant?.Size?.name;
-                        details = colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName || '');
+
+                        // Build details string with discount info
+                        let detailParts = [];
+                        if (colorName || sizeName) {
+                            detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
+                        }
+                        if (discountType && unitDiscount > 0) {
+                            const discountText = discountType === 'percentage'
+                                ? `${unitDiscount}% off`
+                                : `${unitDiscount.toFixed(2)} off`;
+                            detailParts.push(`Discount: ${discountText}`);
+                        }
+                        details = detailParts.join(' | ') || '';
+
                         purchasePrice = Number(item?.purchasePrice || item.ProductVariant?.Product?.purchasePrice || 0);
                         salesPrice = Number(item.ProductVariant?.Product?.salesPrice || 0);
                         vat = Number(item.ProductVariant?.Product?.vat || 0);
@@ -612,7 +630,20 @@ const OrderService = {
                         sku = item?.Product?.sku;
                         colorName = item?.Product?.Color?.name;
                         sizeName = item?.Product?.Size?.name;
-                        details = colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName || '');
+
+                        // Build details string with discount info
+                        let detailParts = [];
+                        if (colorName || sizeName) {
+                            detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
+                        }
+                        if (discountType && unitDiscount > 0) {
+                            const discountText = discountType === 'percentage'
+                                ? `${unitDiscount}% off`
+                                : `${unitDiscount.toFixed(2)} off`;
+                            detailParts.push(`Discount: ${discountText}`);
+                        }
+                        details = detailParts.join(' | ') || '';
+
                         purchasePrice = Number(item?.purchasePrice || item?.Product?.purchasePrice || 0);
                         salesPrice = Number(item?.Product?.salesPrice || 0);
                         vat = Number(item?.Product?.vat || 0);
@@ -624,6 +655,12 @@ const OrderService = {
                     const quantity = Number(item.quantity);
                     const itemSubtotal = Number(item.subtotal);
                     const itemCost = purchasePrice * quantity;
+
+                    // Calculate original price before discount (salesPrice is the base price)
+                    const originalUnitPrice = salesPrice || unitPrice;
+                    const originalSubtotal = originalUnitPrice * quantity;
+
+                    // Calculate profit (using subtotal which already includes discount)
                     const itemProfit = itemSubtotal - itemCost;
                     const itemProfitMargin = itemSubtotal > 0 ? ((itemProfit / itemSubtotal) * 100).toFixed(2) : '0.00';
 
@@ -638,11 +675,21 @@ const OrderService = {
                         size: sizeName,
                         quantity,
                         unitPrice,
+                        originalUnitPrice,
                         subtotal: itemSubtotal,
+                        originalSubtotal,
                         purchasePrice,
                         salesPrice,
                         vat,
                         productImage,
+                        // Discount information
+                        discount: {
+                            type: discountType,
+                            unitDiscount,
+                            totalDiscount,
+                            hasDiscount: discountType && (unitDiscount > 0 || totalDiscount > 0),
+                            discountAmount: totalDiscount > 0 ? totalDiscount : (unitDiscount * quantity)
+                        },
                         itemCost,
                         itemProfit: Number(itemProfit.toFixed(2)),
                         itemProfitMargin: itemProfitMargin + '%',
@@ -693,6 +740,16 @@ const OrderService = {
                 const itemPurchasePrice = Number(item?.purchasePrice || item?.Product?.purchasePrice || 0);
                 return sum + (itemPurchasePrice * item.quantity);
             }, 0);
+
+            // Calculate total item-level discounts
+            const totalItemDiscounts = order.OrderItems.reduce((sum, item) => {
+                const itemTotalDiscount = Number(item.totalDiscount || 0);
+                const itemUnitDiscount = Number(item.unitDiscount || 0);
+                const quantity = Number(item.quantity || 0);
+                // Use totalDiscount if available, otherwise calculate from unitDiscount
+                return sum + (itemTotalDiscount > 0 ? itemTotalDiscount : (itemUnitDiscount * quantity));
+            }, 0);
+
             const totalProfit = Number(order.total) - totalCost;
             const profitMargin = order.total > 0 ? ((totalProfit / order.total) * 100).toFixed(2) : '0.00';
 
@@ -702,7 +759,8 @@ const OrderService = {
                 averageItemPrice: totalItems > 0 ? (Number(order.subtotal) / totalItems).toFixed(2) : '0.00',
                 totalCost: Number(totalCost.toFixed(2)),
                 totalProfit: Number(totalProfit.toFixed(2)),
-                profitMargin: profitMargin + '%'
+                profitMargin: profitMargin + '%',
+                totalItemDiscounts: Number(totalItemDiscounts.toFixed(2))
             };
 
             return {
