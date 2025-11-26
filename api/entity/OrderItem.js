@@ -15,6 +15,7 @@ const OrderItem = sequelize.define("OrderItem", {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
     },
+
     purchasePrice: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
@@ -23,6 +24,26 @@ const OrderItem = sequelize.define("OrderItem", {
     subtotal: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
+    },
+
+    discountType: {
+        type: Sequelize.ENUM("percentage", "amount"),
+        allowNull: true,
+        comment: "Type of discount applied to the product",
+    },
+
+    unitDiscount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Discount given per unit",
+    },
+
+    totalDiscount: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Total discount for this order item",
     },
 
 

@@ -100,11 +100,16 @@ const OrderService = {
                     variantId,
                     quantity,
                     unitPrice,
+                    discount,
                     subtotal,
                     currentStock,
                     variant,
-                    product
+                    product,
+                    discountType,
+                    unitDiscount
                 } = item;
+
+                console.log({ unitPrice, orderPrice: orderData?.unitPrice })
 
                 // Create order item
                 await OrderItem.create({
@@ -112,8 +117,11 @@ const OrderService = {
                     ProductId: productId,
                     ProductVariantId: variantId,
                     quantity,
-                    unitPrice: orderData?.unitPrice || unitPrice,
+                    unitPrice: unitPrice,
+                    discount: discount,
                     subtotal,
+                    discountType,
+                    unitDiscount,
                     purchasePrice: Number(product?.purchasePrice || 0)
                 }, { transaction });
 
@@ -863,8 +871,10 @@ const OrderService = {
         const validatedItems = [];
         let subtotal = 0;
 
+        console.log({ items })
+
         for (const item of items) {
-            const { productId, variantId, quantity } = item;
+            const { productId, variantId, quantity, unitPrice, discountAmount, discountType } = item;
 
             // Validate product exists and belongs to user
             const product = await Product.findOne({
@@ -900,10 +910,11 @@ const OrderService = {
 
                 currentStock = variant.quantity;
                 // Use product price for variant as they share the same price
-                finalPrice = product.salesPrice;
+                finalPrice = unitPrice;
+                // finalPrice = product.salesPrice;
             } else {
                 currentStock = product.stock;
-                finalPrice = product.salesPrice;
+                finalPrice = unitPrice;
             }
 
             // Check stock availability
@@ -915,18 +926,16 @@ const OrderService = {
             let itemPrice = finalPrice;
 
 
-            if (product.discountType && product.discountAmount) {
-                if (product.discountType === 'percentage') {
-                    itemPrice = finalPrice * (1 - product.discountAmount / 100);
+            if (discountType && discountAmount) {
+                if (discountType === 'percentage') {
+                    itemPrice = finalPrice * (1 - discountAmount / 100);
 
-                } else if (product.discountType === 'amount') {
-                    itemPrice = finalPrice - product.discountAmount;
+                } else if (discountType === 'amount') {
+                    itemPrice = finalPrice - discountAmount;
                 }
             }
 
             const discountPrice = finalPrice - itemPrice;
-
-
 
             itemPrice = itemPrice + itemPrice * (product.vat / 100)
 
@@ -938,12 +947,16 @@ const OrderService = {
                 variantId,
                 quantity,
                 unitPrice: itemPrice,
+                unitDiscount: discountAmount,
+                discountType: discountType,
                 subtotal: itemSubtotal,
                 discount: discountPrice,
                 currentStock,
                 product,
                 variant
             });
+
+            console.log({ validatedItems })
         }
 
         return { validatedItems, subtotal };
