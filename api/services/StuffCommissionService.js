@@ -131,9 +131,18 @@ const StuffCommissionService = {
                     whereClause.commissionAmount[Op.lte] = maxAmount;
                 }
             }
+            // If minAmount is not provided or is 0, filter out zero commissions
+            if (!query.minAmount || Number(query.minAmount) === 0) {
+                whereClause.commissionAmount[Op.gt] = 0;
+            }
+        } else if (!query.commissionAmount) {
+            // Filter out zero commissions by default when no amount filters are provided
+            whereClause.commissionAmount = {
+                [Op.gt]: 0
+            };
         }
 
-        // Filter by exact commission amount
+        // Filter by exact commission amount (this overrides the zero filter)
         if (query.commissionAmount) {
             const commissionAmount = Number(query.commissionAmount);
             if (!Number.isNaN(commissionAmount)) {

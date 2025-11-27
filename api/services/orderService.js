@@ -392,6 +392,36 @@ const OrderService = {
                 }]
             });
 
+            // Get total commissions with same filters
+            const commissionWhereClause = {
+                UserId: { [Op.in]: targetShopIds }
+            };
+
+            // Apply date range filter to commissions if provided
+            if (dateRange?.startDate && dateRange?.endDate) {
+                const start = new Date(dateRange.startDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(dateRange.endDate);
+                end.setHours(23, 59, 59, 999);
+                commissionWhereClause.createdAt = {
+                    [Op.between]: [start, end]
+                };
+            }
+
+            const totalCommissions = await StuffCommission.sum('commissionAmount', {
+                where: commissionWhereClause
+            }) || 0;
+
+            // Get total products with same shop filters (no date filter for products)
+            const productWhereClause = {
+                UserId: { [Op.in]: targetShopIds },
+                status: 'active'
+            };
+
+            const totalProducts = await Product.count({
+                where: productWhereClause
+            }) || 0;
+
             // Calculate detailed statistics
             const stats = orders.reduce((acc, order) => {
                 acc.totalSales += Number(order.total);
@@ -420,7 +450,9 @@ const OrderService = {
                 totalProfit: 0,
                 totalLoss: 0,
                 totalDiscount: 0,
-                totalTax: 0
+                totalTax: 0,
+                totalCommissions: Number(totalCommissions),
+                totalProducts: Number(totalProducts)
             });
 
             return {
