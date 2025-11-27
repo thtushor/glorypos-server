@@ -272,11 +272,62 @@ const OrderService = {
                 offset: offset
             });
 
+            // Calculate order-wise statistics
+            const ordersWithStats = orders.map(order => {
+                const orderData = order.toJSON();
+
+                // Calculate total cost, profit, and loss from order items
+                let totalCost = 0;
+                let totalProfit = 0;
+                let totalLoss = 0;
+
+                // Calculate total commission from commissions
+                let totalCommission = 0;
+                if (orderData.commissions && orderData.commissions.length > 0) {
+                    totalCommission = orderData.commissions.reduce((sum, commission) => {
+                        return sum + Number(commission.commissionAmount || 0);
+                    }, 0);
+                }
+
+                if (orderData.OrderItems && orderData.OrderItems.length > 0) {
+                    orderData.OrderItems.forEach(item => {
+                        const quantity = Number(item.quantity || 0);
+                        const subtotal = Number(item.subtotal || 0);
+                        // Use purchasePrice directly from OrderItem
+                        const purchasePrice = Number(item.purchasePrice || 0);
+
+                        // Calculate cost for this item
+                        const itemCost = purchasePrice * quantity;
+                        totalCost += itemCost;
+
+                        // Calculate profit/loss for this item
+                        const itemProfit = subtotal - itemCost;
+
+                        if (itemProfit >= 0) {
+                            totalProfit += itemProfit;
+                        } else {
+                            totalLoss += Math.abs(itemProfit);
+                        }
+                    });
+                }
+
+
+
+                // Add calculated fields to order data
+                return {
+                    ...orderData,
+                    totalCost: Number(totalCost.toFixed(2)),
+                    totalProfit: Number(totalProfit.toFixed(2)),
+                    totalLoss: Number(totalLoss.toFixed(2)),
+                    totalCommission: Number(totalCommission.toFixed(2))
+                };
+            });
+
             return {
                 status: true,
                 message: "Orders retrieved successfully",
                 data: {
-                    orders,
+                    orders: ordersWithStats,
                     pagination: {
                         page,
                         pageSize,
