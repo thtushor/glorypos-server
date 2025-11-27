@@ -37,6 +37,8 @@ const OrderService = {
             // Validate and calculate prices for all items
             const { validatedItems, subtotal } = await this.validateOrderItems(orderData?.items, transaction, accessibleShopIds);
 
+            console.log({ validatedItems, subtotal })
+
             // Calculate tax and total
             const tax = orderData?.tax || 0;
             const discount = orderData?.discount || 0;
@@ -118,7 +120,7 @@ const OrderService = {
                     ProductVariantId: variantId,
                     quantity,
                     unitPrice: unitPrice,
-                    discount: discount,
+                    discountAmount: discount,
                     subtotal,
                     discountType,
                     unitDiscount,
