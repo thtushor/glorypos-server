@@ -108,10 +108,10 @@ const OrderService = {
                     variant,
                     product,
                     discountType,
-                    unitDiscount
+                    discountAmount
                 } = item;
 
-                console.log({ unitPrice, orderPrice: orderData?.unitPrice })
+                console.log({ unitPrice, orderPrice: orderData?.unitPrice, productPrice: product.price })
 
                 // Create order item
                 await OrderItem.create({
@@ -120,11 +120,12 @@ const OrderService = {
                     ProductVariantId: variantId,
                     quantity,
                     unitPrice: unitPrice,
-                    discountAmount: discount,
+                    discountAmount: discountAmount,
+                    originalUnitPrice: product.price,
                     subtotal,
                     discountType,
-                    unitDiscount,
-                    purchasePrice: Number(product?.purchasePrice || 0)
+                    unitDiscount: discount,
+                    purchasePrice: Number(product?.purchasePrice || 0),
                 }, { transaction });
 
                 // Update stock
@@ -594,7 +595,8 @@ const OrderService = {
                     // Extract discount information from OrderItem
                     const discountType = item.discountType || null;
                     const unitDiscount = Number(item.unitDiscount || 0);
-                    const totalDiscount = Number(item.totalDiscount || 0);
+                    const discountAmount = Number(item.discountAmount || 0);
+                    const totalDiscount = unitDiscount * item.quantity;
 
                     if (item.ProductVariant) {
                         productName = item.ProductVariant?.Product?.name || "";
@@ -607,10 +609,10 @@ const OrderService = {
                         if (colorName || sizeName) {
                             detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
                         }
-                        if (discountType && unitDiscount > 0) {
+                        if (discountType && discountAmount > 0) {
                             const discountText = discountType === 'percentage'
-                                ? `${unitDiscount}% off`
-                                : `${unitDiscount.toFixed(2)} off`;
+                                ? `${discountAmount}% off`
+                                : `฿${discountAmount.toFixed(2)} off`;
                             detailParts.push(`Discount: ${discountText}`);
                         }
                         details = detailParts.join(' | ') || '';
@@ -638,16 +640,16 @@ const OrderService = {
                         if (colorName || sizeName) {
                             detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
                         }
-                        if (discountType && unitDiscount > 0) {
+                        if (discountType && discountAmount > 0) {
                             const discountText = discountType === 'percentage'
-                                ? `${unitDiscount}% off`
-                                : `${unitDiscount.toFixed(2)} off`;
+                                ? `${discountAmount}% off`
+                                : `฿${discountAmount.toFixed(2)} off`;
                             detailParts.push(`Discount: ${discountText}`);
                         }
                         details = detailParts.join(' | ') || '';
 
                         purchasePrice = Number(item?.purchasePrice || item?.Product?.purchasePrice || 0);
-                        salesPrice = Number(item?.Product?.salesPrice || 0);
+                        salesPrice = Number(item?.originalUnitPrice || item?.Product?.price || 0);
                         vat = Number(item?.Product?.vat || 0);
                         productImage = item?.Product?.productImage;
                         shop = item.Product?.User
@@ -690,7 +692,7 @@ const OrderService = {
                             unitDiscount,
                             totalDiscount,
                             hasDiscount: discountType && (unitDiscount > 0 || totalDiscount > 0),
-                            discountAmount: totalDiscount > 0 ? totalDiscount : (unitDiscount * quantity)
+                            discountAmount: discountAmount
                         },
                         itemCost,
                         itemProfit: Number(itemProfit.toFixed(2)),
@@ -1007,7 +1009,7 @@ const OrderService = {
                 variantId,
                 quantity,
                 unitPrice: itemPrice,
-                unitDiscount: discountAmount,
+                discountAmount: discountAmount,
                 discountType: discountType,
                 subtotal: itemSubtotal,
                 discount: discountPrice,

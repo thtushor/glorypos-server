@@ -16,6 +16,13 @@ const OrderItem = sequelize.define("OrderItem", {
         allowNull: false,
     },
 
+    originalUnitPrice: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Original unit price of the product",
+    },
+
     purchasePrice: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
