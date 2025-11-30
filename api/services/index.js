@@ -15,6 +15,7 @@ const CouponService = require("./CouponService");
 const UserRoleService = require("./UserRoleService");
 const PayrollService = require("./PayrollService");
 const StuffCommissionService = require("./StuffCommissionService");
+const LoanService = require("./LoanService");
 
 module.exports = {
   AuthService,
@@ -34,4 +35,5 @@ module.exports = {
   UserRoleService,
   PayrollService,
   StuffCommissionService,
+  LoanService,
 };

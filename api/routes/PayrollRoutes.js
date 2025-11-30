@@ -174,21 +174,52 @@ router.post(
   })
 );
 
-// Release salary (extra)
+// Release full salary
 router.post(
-  "/release",
+  "/release-full",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const { userId, startDate, endDate, releasedAmount, details } = req.body;
-    const result = await PayrollService.releaseSalary(
+    const result = await PayrollService.releaseFullSalary(req.user.id, req.body);
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// Release advance salary
+router.post(
+  "/release-advance",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.releaseAdvanceSalary(
       req.user.id,
-      userId,
-      startDate,
-      endDate,
-      releasedAmount,
-      details
+      req.body
     );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// Release partial salary
+router.post(
+  "/release-partial",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.releasePartialSalary(
+      req.user.id,
+      req.body
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// Release bonus
+router.post(
+  "/release-bonus",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.releaseBonus(req.user.id, req.body);
     res.status(result.status ? 200 : 400).json(result);
   })
 );

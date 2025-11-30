@@ -973,49 +973,141 @@ const PayrollService = {
     }
   },
 
-  // Extra: Release salary, save history (case 5,8)
-  async releaseSalary(
+  async releaseFullSalary(
     adminId,
-    userId,
-    startDate,
-    endDate,
-    releasedAmount,
-    details
+    { employeeId, startDate, endDate, amount, calculationSnapshot }
   ) {
+    const transaction = await sequelize.transaction();
     try {
-      const existing = await PayrollRelease.findOne({
-        where: {
-          userId,
-          startDate: { [Op.lte]: endDate }, // existing period starts before new ends
-          endDate: { [Op.gte]: startDate }, // existing period ends after new starts
+      // 1. Create the full salary release record
+      const salaryRelease = await PayrollRelease.create(
+        {
+          userId: employeeId,
+          startDate,
+          endDate,
+          releaseType: "FULL",
+          amount,
+          calculationSnapshot,
+          releasedBy: adminId,
         },
+        { transaction }
+      );
+
+      // 2. Check for active loans and deduct EMI
+      const activeLoan = await EmployeeLoan.findOne({
+        where: { employeeId, status: "ACTIVE" },
+        transaction,
       });
 
-      if (existing) {
-        throw new Error(
-          `Salary already released for ${moment(startDate).format(
-            "DD MMM YYYY"
-          )} – ${moment(endDate).format("DD MMM YYYY")} (฿${
-            existing.releasedAmount
-          } on ${moment(existing.releaseDate).format("DD MMM YYYY")})`
+      if (activeLoan) {
+        const emi = parseFloat(activeLoan.monthlyEMI);
+        const remaining = parseFloat(activeLoan.remainingBalance);
+        const deductionAmount = Math.min(emi, remaining);
+
+        // Create a loan deduction entry in PayrollRelease
+        await PayrollRelease.create(
+          {
+            userId: employeeId,
+            startDate,
+            endDate,
+            releaseType: "LOAN_DEDUCTION",
+            amount: deductionAmount,
+            calculationSnapshot: {
+              ...calculationSnapshot,
+              loanId: activeLoan.id,
+              emi: emi,
+            },
+            releasedBy: adminId,
+          },
+          { transaction }
         );
+
+        // Create a record in LoanPayment
+        await LoanPayment.create(
+          {
+            loanId: activeLoan.id,
+            employeeId,
+            paidAmount: deductionAmount,
+            paidBy: adminId,
+          },
+          { transaction }
+        );
+
+        // Update the loan's remaining balance
+        const newRemainingBalance = remaining - deductionAmount;
+        activeLoan.remainingBalance = newRemainingBalance;
+        if (newRemainingBalance <= 0) {
+          activeLoan.status = "COMPLETED";
+        }
+        await activeLoan.save({ transaction });
       }
 
-      const release = await PayrollRelease.create({
-        userId,
-        startDate,
-        endDate,
-        releasedAmount,
-        details,
-        releaseDate: new Date(),
-        releasedBy: adminId,
-      });
-
+      await transaction.commit();
       return {
         status: true,
-        message: "Salary paid successfully!",
+        message: "Full salary released successfully.",
+        data: salaryRelease,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      return { status: false, message: error.message };
+    }
+  },
+
+  async releaseAdvanceSalary(adminId, { employeeId, amount, notes }) {
+    try {
+      const release = await PayrollRelease.create({
+        userId: employeeId,
+        startDate: moment().startOf("month").format("YYYY-MM-DD"),
+        endDate: moment().endOf("month").format("YYYY-MM-DD"),
+        releaseType: "ADVANCE",
+        amount,
+        calculationSnapshot: { notes },
+        releasedBy: adminId,
+      });
+      return {
+        status: true,
+        message: "Advance salary released.",
         data: release,
       };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async releasePartialSalary(adminId, { employeeId, amount, notes }) {
+    try {
+      const release = await PayrollRelease.create({
+        userId: employeeId,
+        startDate: moment().startOf("month").format("YYYY-MM-DD"),
+        endDate: moment().endOf("month").format("YYYY-MM-DD"),
+        releaseType: "PARTIAL",
+        amount,
+        calculationSnapshot: { notes },
+        releasedBy: adminId,
+      });
+      return {
+        status: true,
+        message: "Partial salary released.",
+        data: release,
+      };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async releaseBonus(adminId, { employeeId, amount, notes }) {
+    try {
+      const release = await PayrollRelease.create({
+        userId: employeeId,
+        startDate: moment().startOf("month").format("YYYY-MM-DD"),
+        endDate: moment().endOf("month").format("YYYY-MM-DD"),
+        releaseType: "BONUS",
+        amount,
+        calculationSnapshot: { notes },
+        releasedBy: adminId,
+      });
+      return { status: true, message: "Bonus released.", data: release };
     } catch (error) {
       return { status: false, message: error.message };
     }

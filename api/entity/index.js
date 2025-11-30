@@ -21,6 +21,8 @@ const LeaveRequest = require("./LeaveRequest");
 const Holiday = require("./Holiday");
 const PayrollRelease = require("./PayrollRelease");
 const SalaryHistory = require("./SalaryHistory");
+const EmployeeLoan = require("./EmployeeLoan");
+const LoanPayment = require("./LoanPayment");
 
 // User Associations
 User.hasMany(Product);
@@ -162,6 +164,16 @@ PayrollRelease.belongsTo(User, { foreignKey: "releasedBy", as: "releaser" });
 UserRole.hasMany(SalaryHistory, { foreignKey: "userId" });
 SalaryHistory.belongsTo(UserRole, { foreignKey: "userId" });
 
+// Loan Associations
+UserRole.hasMany(EmployeeLoan, { foreignKey: "employeeId" });
+EmployeeLoan.belongsTo(UserRole, { foreignKey: "employeeId" });
+
+EmployeeLoan.hasMany(LoanPayment, { foreignKey: "loanId" });
+LoanPayment.belongsTo(EmployeeLoan, { foreignKey: "loanId" });
+
+User.hasMany(LoanPayment, { foreignKey: "paidBy" });
+LoanPayment.belongsTo(User, { foreignKey: "paidBy" });
+
 module.exports = {
   User,
   Product,
@@ -185,4 +197,6 @@ module.exports = {
   Holiday,
   PayrollRelease,
   SalaryHistory,
+  EmployeeLoan,
+  LoanPayment,
 };

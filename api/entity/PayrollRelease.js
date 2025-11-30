@@ -31,21 +31,35 @@ const PayrollRelease = sequelize.define(
       type: Sequelize.DATEONLY, // Stores "2025-12-31"
       allowNull: false,
     },
+    // Type of payout
+    releaseType: {
+      type: Sequelize.ENUM(
+        "FULL",
+        "ADVANCE",
+        "PARTIAL",
+        "BONUS",
+        "LOAN_DEDUCTION"
+      ),
+      allowNull: false,
+      defaultValue: "FULL",
+      comment:
+        "FULL = full month salary, ADVANCE = salary advance, LOAN_DEDUCTION = EMI auto-deducted",
+    },
 
-    releasedAmount: {
-      type: Sequelize.DECIMAL(12, 2), // Increased precision for safety
+    amount: {
+      type: Sequelize.DECIMAL(12, 2),
       allowNull: false,
       validate: {
         min: 0,
       },
     },
 
-    details: {
+    calculationSnapshot: {
       type: Sequelize.JSON,
-      allowNull: true, // Can be null if you want minimal logging
+      allowNull: true,
       defaultValue: {},
       comment:
-        "Full salary calculation snapshot: working days, absent hours, etc.",
+        "Full salary calculation snapshot: attendance, salary days, overtime, deductions.",
     },
 
     releaseDate: {
@@ -67,11 +81,14 @@ const PayrollRelease = sequelize.define(
     tableName: "PayrollReleases",
     timestamps: true,
     indexes: [
-      // Prevent duplicate salary release for same user + same period
+      // Prevent duplicate FULL salary release for same user + same period
       {
         unique: true,
-        fields: ["userId", "startDate", "endDate"],
-        name: "unique_user_salary_period",
+        fields: ["userId", "startDate", "endDate", "releaseType"],
+        where: {
+          releaseType: "FULL",
+        },
+        name: "unique_full_salary_period",
       },
       // Fast lookup by user
       {
