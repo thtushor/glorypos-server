@@ -1,6 +1,10 @@
 // New file: PayrollRoutes.js - API endpoints
 const express = require("express");
-const { AuthService, PayrollService } = require("../services");
+const {
+  AuthService,
+  PayrollService,
+  BulkPayrollService,
+} = require("../services");
 const requestHandler = require("../utils/requestHandler");
 const { addShopAccess } = require("../middleware/shopAccessMiddleware"); // Assume similar auth
 
@@ -220,6 +224,20 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.releaseBonus(req.user.id, req.body);
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// Release salary for all employees
+router.post(
+  "/release-all",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await BulkPayrollService.releaseSalaryForAll(
+      req.user.id,
+      req.body
+    );
     res.status(result.status ? 200 : 400).json(result);
   })
 );

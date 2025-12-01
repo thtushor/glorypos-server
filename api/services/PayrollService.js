@@ -10,6 +10,9 @@ const {
   LeaveRequest,
   UserRole,
   User,
+  StuffCommission,
+  EmployeeLoan,
+  LoanPayment,
 } = require("../entity");
 
 const PayrollService = {
@@ -740,6 +743,23 @@ const PayrollService = {
         (totalMinutesIn30Days - netAbsentMinutes) * perMinuteRate
       ).toFixed(2);
 
+      const commissions = await StuffCommission.findAll({
+        where: {
+          UserRoleId: userId,
+          createdAt: {
+            [Op.gte]: moment(startDate).toDate(),
+            [Op.lte]: moment(endDate).toDate(),
+          },
+        },
+      });
+
+      const totalCommission = commissions.reduce(
+        (acc, comm) => acc + parseFloat(comm.commissionAmount),
+        0
+      );
+
+      const finalSalary = parseFloat(netSalary) + totalCommission;
+
       const data = {
         userId,
         fullName: user.fullName,
@@ -756,6 +776,8 @@ const PayrollService = {
         totalLeaveDays,
         totalHolidayDays,
         netSalary: Math.max(0, parseFloat(netSalary)),
+        totalCommission,
+        finalSalary,
       };
 
       return {
@@ -973,20 +995,33 @@ const PayrollService = {
     }
   },
 
-  async releaseFullSalary(
-    adminId,
-    { employeeId, startDate, endDate, amount, calculationSnapshot }
-  ) {
+  async releaseFullSalary(adminId, { employeeId, startDate, endDate }) {
     const transaction = await sequelize.transaction();
     try {
-      // 1. Create the full salary release record
+      // Step 1: Calculate the definitive salary details on the backend
+      const salaryDetailsResult = await this.getSalaryDetailsInRange(
+        adminId,
+        employeeId,
+        startDate,
+        endDate
+      );
+
+      if (!salaryDetailsResult.status) {
+        throw new Error(
+          `Failed to calculate salary for employee ${employeeId}: ${salaryDetailsResult.message}`
+        );
+      }
+
+      const { finalSalary, ...calculationSnapshot } = salaryDetailsResult.data;
+
+      // Step 2: Create the full salary release record with the calculated amount
       const salaryRelease = await PayrollRelease.create(
         {
           userId: employeeId,
           startDate,
           endDate,
           releaseType: "FULL",
-          amount,
+          amount: finalSalary, // Use the calculated final salary
           calculationSnapshot,
           releasedBy: adminId,
         },
@@ -1013,9 +1048,9 @@ const PayrollService = {
             releaseType: "LOAN_DEDUCTION",
             amount: deductionAmount,
             calculationSnapshot: {
-              ...calculationSnapshot,
               loanId: activeLoan.id,
               emi: emi,
+              originalSnapshot: calculationSnapshot,
             },
             releasedBy: adminId,
           },

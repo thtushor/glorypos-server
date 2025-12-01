@@ -16,6 +16,7 @@ const UserRoleService = require("./UserRoleService");
 const PayrollService = require("./PayrollService");
 const StuffCommissionService = require("./StuffCommissionService");
 const LoanService = require("./LoanService");
+const BulkPayrollService = require("./BulkPayrollService");
 
 module.exports = {
   AuthService,
@@ -36,4 +37,5 @@ module.exports = {
   PayrollService,
   StuffCommissionService,
   LoanService,
+  BulkPayrollService,
 };
