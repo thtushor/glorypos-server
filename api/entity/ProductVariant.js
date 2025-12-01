@@ -32,6 +32,11 @@ const ProductVariant = sequelize.define(
             allowNull: true,
             comment: "Variant image URL",
         },
+        images: {
+            type: Sequelize.JSON,
+            allowNull: true,
+            comment: "Array of variant images URLs",
+        },
         status: {
             type: Sequelize.ENUM("active", "inactive"),
             defaultValue: "active",

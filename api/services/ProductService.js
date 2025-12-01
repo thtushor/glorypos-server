@@ -4,8 +4,23 @@ const { Op } = require('sequelize');
 const ProductService = {
     async create(productData, userId) {
         try {
+            // Handle images array: set first image to productImage and store all in images column
+            const processedData = { ...productData };
+
+            if (productData.images && Array.isArray(productData.images) && productData.images.length > 0) {
+                // Set first image as productImage if not already set
+                if (!processedData.productImage) {
+                    processedData.productImage = productData.images[0];
+                }
+                // Store all images in images column
+                processedData.images = productData.images;
+            } else if (productData.productImage && !processedData.images) {
+                // If only single productImage is provided, also store it in images array
+                processedData.images = [productData.productImage];
+            }
+
             const product = await Product.create({
-                ...productData,
+                ...processedData,
                 UserId: userId
             });
             return { status: true, message: "Product created successfully", data: product };
@@ -32,7 +47,7 @@ const ProductService = {
                 }
             }
 
-            if(query.status){
+            if (query.status) {
                 whereClause.status = query.status;
             }
 
@@ -67,7 +82,7 @@ const ProductService = {
                 }
             }
 
-            if(query?.sku){
+            if (query?.sku) {
                 whereClause.sku = query.sku;
             }
 
@@ -215,7 +230,32 @@ const ProductService = {
             if (!product) {
                 return { status: false, message: "Product not found", data: null };
             }
-            await product.update(updateData);
+
+            // Handle images array: set first image to productImage and store all in images column
+            const processedData = { ...updateData };
+
+            if (updateData.images && Array.isArray(updateData.images) && updateData.images.length > 0) {
+                // Set first image as productImage if not explicitly provided
+                if (!processedData.productImage) {
+                    processedData.productImage = updateData.images[0];
+                }
+                // Store all images in images column
+                processedData.images = updateData.images;
+            } else if (updateData.productImage && !processedData.images) {
+                // If only single productImage is provided and images not updated, maintain existing images or set new one
+                if (!product.images || product.images.length === 0) {
+                    processedData.images = [updateData.productImage];
+                } else {
+                    // Update first image in array if productImage changed
+                    const currentImages = Array.isArray(product.images) ? [...product.images] : [];
+                    if (currentImages[0] !== updateData.productImage) {
+                        currentImages[0] = updateData.productImage;
+                        processedData.images = currentImages;
+                    }
+                }
+            }
+
+            await product.update(processedData);
             return { status: true, message: "Product updated successfully", data: product };
         } catch (error) {
             return { status: false, message: "Failed to update product", data: null, error };

@@ -69,6 +69,11 @@ const Product = sequelize.define(
             allowNull: true,
             comment: "Path or URL of the product image",
         },
+        images: {
+            type: Sequelize.JSON,
+            allowNull: true,
+            comment: "Array of product images URLs",
+        },
         discountType: {
             type: Sequelize.ENUM("percentage", "amount"),
             allowNull: true,

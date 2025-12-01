@@ -40,7 +40,22 @@ const ProductVariantService = {
                 };
             }
 
-            const variant = await ProductVariant.create(variantData);
+            // Handle images array: set first image to imageUrl and store all in images column
+            const processedData = { ...variantData };
+
+            if (variantData.images && Array.isArray(variantData.images) && variantData.images.length > 0) {
+                // Set first image as imageUrl if not already set
+                if (!processedData.imageUrl) {
+                    processedData.imageUrl = variantData.images[0];
+                }
+                // Store all images in images column
+                processedData.images = variantData.images;
+            } else if (variantData.imageUrl && !processedData.images) {
+                // If only single imageUrl is provided, also store it in images array
+                processedData.images = [variantData.imageUrl];
+            }
+
+            const variant = await ProductVariant.create(processedData);
             return {
                 status: true,
                 message: "Product variant created successfully",
@@ -153,9 +168,33 @@ const ProductVariantService = {
 
             console.log("updateData", { updateData });
 
-            const filteredUpdateData = Object.keys(updateData).reduce((acc, key) => {
-                if (updateData[key] !== undefined && updateData[key] !== null && updateData[key] !== '') {
-                    acc[key] = updateData[key];
+            // Handle images array: set first image to imageUrl and store all in images column
+            const processedData = { ...updateData };
+
+            if (updateData.images && Array.isArray(updateData.images) && updateData.images.length > 0) {
+                // Set first image as imageUrl if not explicitly provided
+                if (!processedData.imageUrl) {
+                    processedData.imageUrl = updateData.images[0];
+                }
+                // Store all images in images column
+                processedData.images = updateData.images;
+            } else if (updateData.imageUrl && !processedData.images) {
+                // If only single imageUrl is provided and images not updated, maintain existing images or set new one
+                if (!variant.images || variant.images.length === 0) {
+                    processedData.images = [updateData.imageUrl];
+                } else {
+                    // Update first image in array if imageUrl changed
+                    const currentImages = Array.isArray(variant.images) ? [...variant.images] : [];
+                    if (currentImages[0] !== updateData.imageUrl) {
+                        currentImages[0] = updateData.imageUrl;
+                        processedData.images = currentImages;
+                    }
+                }
+            }
+
+            const filteredUpdateData = Object.keys(processedData).reduce((acc, key) => {
+                if (processedData[key] !== undefined && processedData[key] !== null && processedData[key] !== '') {
+                    acc[key] = processedData[key];
                 }
                 return acc;
             }, {});
