@@ -9,9 +9,9 @@ const ProductService = {
 
             if (productData.images && Array.isArray(productData.images) && productData.images.length > 0) {
                 // Set first image as productImage if not already set
-                if (!processedData.productImage) {
-                    processedData.productImage = productData.images[0];
-                }
+
+                processedData.productImage = productData.images[0];
+
                 // Store all images in images column
                 processedData.images = productData.images;
             } else if (productData.productImage && !processedData.images) {
@@ -236,9 +236,9 @@ const ProductService = {
 
             if (updateData.images && Array.isArray(updateData.images) && updateData.images.length > 0) {
                 // Set first image as productImage if not explicitly provided
-                if (!processedData.productImage) {
-                    processedData.productImage = updateData.images[0];
-                }
+
+                processedData.productImage = updateData.images[0];
+
                 // Store all images in images column
                 processedData.images = updateData.images;
             } else if (updateData.productImage && !processedData.images) {
