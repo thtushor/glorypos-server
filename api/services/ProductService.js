@@ -86,18 +86,31 @@ const ProductService = {
                 whereClause.sku = query.sku;
             }
 
+            // Add modelNo filter if provided
+            if (query.modelNo) {
+                whereClause.modelNo = { [Op.like]: `%${query.modelNo}%` };
+            }
+
+            // Add gender filter if provided
+            if (query.gender) {
+                whereClause.gender = query.gender;
+            }
+
             // Add search functionality
             if (query.searchKey) {
-                whereClause[Op.or] = [
+                const searchConditions = [
                     { name: { [Op.like]: `%${query.searchKey}%` } },
                     { code: { [Op.like]: `%${query.searchKey}%` } },
                     { sku: { [Op.like]: `%${query.searchKey}%` } },
-                    { description: { [Op.like]: `%${query.searchKey}%` } }
+                    { description: { [Op.like]: `%${query.searchKey}%` } },
+                    { modelNo: { [Op.like]: `%${query.searchKey}%` } }
                 ];
+
+                whereClause[Op.or] = searchConditions;
             }
 
             // Add other filters if provided (exclude pagination, search, and filter params)
-            const { searchKey, shopId, categoryId, brandId, unitId, minPrice, maxPrice, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
+            const { searchKey, shopId, categoryId, brandId, unitId, minPrice, maxPrice, modelNo, gender, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
             Object.keys(otherFilters).forEach(key => {
                 if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
                     whereClause[key] = otherFilters[key];

@@ -116,6 +116,16 @@ const Product = sequelize.define(
             defaultValue: "active",
             comment: "Product status",
         },
+        gender: {
+            type: Sequelize.ENUM("men", "women", "others"),
+            allowNull: true,
+            comment: "Gender category for the product",
+        },
+        modelNo: {
+            type: Sequelize.STRING,
+            allowNull: true,
+            comment: "Model number of the product",
+        },
 
         // UserId: {
         //     type: Sequelize.INTEGER,

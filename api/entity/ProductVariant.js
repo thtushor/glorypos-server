@@ -41,6 +41,16 @@ const ProductVariant = sequelize.define(
             type: Sequelize.ENUM("active", "inactive"),
             defaultValue: "active",
             comment: "Variant status",
+        },
+        gender: {
+            type: Sequelize.ENUM("men", "women", "others"),
+            allowNull: true,
+            comment: "Gender category for the product variant",
+        },
+        modelNo: {
+            type: Sequelize.STRING,
+            allowNull: true,
+            comment: "Model number of the product variant",
         }
     }
 );
