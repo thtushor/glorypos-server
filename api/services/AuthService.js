@@ -128,6 +128,8 @@ const AuthService = {
         try {
             const user = await User.findOne({ where: { email } });
 
+            const parentShop = user?.parent_id ? await User.findOne({ where: { id: user.parent_id } }) : null;
+
             const childUser = await UserRole.findOne({
                 where: { email }, include: [
 
@@ -159,7 +161,7 @@ const AuthService = {
             }
 
             const token = jwt.sign({ id: user ? user?.id : childUser?.parentUserId, childId: childUser?.id }, process.env.JWT_SECRET, { expiresIn: '15d' });
-            return { status: true, message: "Login successful", data: { user: user ? user : { ...childUser.parent?.dataValues, child: childUser }, token } };
+            return { status: true, message: "Login successful", data: { user: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser }, token } };
         } catch (error) {
             throw error;
         }
@@ -168,6 +170,8 @@ const AuthService = {
     async getProfile(email) {
         try {
             const user = await User.findOne({ where: { email } });
+
+            const parentShop = user.parent_id ? await User.findOne({ where: { id: user.parent_id } }) : null;
 
             const childUser = await UserRole.findOne({
                 where: { email }, include: [
@@ -184,7 +188,7 @@ const AuthService = {
                 return { status: false, message: "User not found", data: null };
             }
 
-            return { status: true, message: "Profile retrieved successfully", data: user ? user : { ...childUser.parent?.dataValues, child: childUser } };
+            return { status: true, message: "Profile retrieved successfully", data: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser } };
 
         } catch (error) {
             return { status: false, message: "Failed to retrieve profile", data: null, error };
