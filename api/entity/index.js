@@ -23,6 +23,8 @@ const PayrollRelease = require("./PayrollRelease");
 const SalaryHistory = require("./SalaryHistory");
 const EmployeeLoan = require("./EmployeeLoan");
 const LoanPayment = require("./LoanPayment");
+const AdvanceSalary = require("./AdvanceSalary"); // Added
+const PayrollFine = require("./PayrollFine"); // Added
 
 // User Associations
 User.hasMany(Product);
@@ -174,6 +176,14 @@ LoanPayment.belongsTo(EmployeeLoan, { foreignKey: "loanId" });
 User.hasMany(LoanPayment, { foreignKey: "paidBy" });
 LoanPayment.belongsTo(User, { foreignKey: "paidBy" });
 
+// AdvanceSalary Associations
+UserRole.hasMany(AdvanceSalary, { foreignKey: "userId" });
+AdvanceSalary.belongsTo(UserRole, { foreignKey: "userId" });
+
+// PayrollFine Associations
+UserRole.hasMany(PayrollFine, { foreignKey: "userId" });
+PayrollFine.belongsTo(UserRole, { foreignKey: "userId" });
+
 module.exports = {
   User,
   Product,
@@ -199,4 +209,6 @@ module.exports = {
   SalaryHistory,
   EmployeeLoan,
   LoanPayment,
+  AdvanceSalary,
+  PayrollFine,
 };

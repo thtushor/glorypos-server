@@ -15,87 +15,141 @@ const PayrollRelease = sequelize.define(
       type: Sequelize.INTEGER,
       allowNull: false,
       references: {
-        model: "UserRoles", // or "Users" depending on your table name
+        model: "Users", // Updated reference
         key: "id",
       },
       onDelete: "CASCADE",
     },
 
-    // Replaced month with actual date range
-    startDate: {
-      type: Sequelize.DATEONLY, // Stores "2025-12-01"
+    // ✅ Salary Month (Handled instead of startDate/endDate)
+    salaryMonth: {
+      type: Sequelize.STRING, // Format: "2025-01"
       allowNull: false,
+      comment: "Salary month in YYYY-MM format",
     },
 
-    endDate: {
-      type: Sequelize.DATEONLY, // Stores "2025-12-31"
-      allowNull: false,
-    },
-    // Type of payout
-    releaseType: {
-      type: Sequelize.ENUM(
-        "FULL",
-        "ADVANCE",
-        "PARTIAL",
-        "BONUS",
-        "LOAN_DEDUCTION"
-      ),
-      allowNull: false,
-      defaultValue: "FULL",
-      comment:
-        "FULL = full month salary, ADVANCE = salary advance, LOAN_DEDUCTION = EMI auto-deducted",
-    },
-
-    amount: {
+    // ✅ Base Salary
+    baseSalary: {
       type: Sequelize.DECIMAL(12, 2),
       allowNull: false,
-      validate: {
-        min: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Advance Salary (Rule 1)
+    advanceAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Bonus Amount (Rule 2)
+    bonusAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    bonusDescription: {
+      type: Sequelize.STRING,
+      allowNull: true, // nullable as requested
+    },
+
+    // ✅ Loan Deduction (Rule 3)
+    loanDeduction: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Fine Amount (Rule 5)
+    fineAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Overtime (Optional but useful)
+    overtimeAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Commission (Optional but useful)
+    commissionAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Other Deductions
+    otherDeduction: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
+    // ✅ Final Payable Salary (Auto-calculated & stored)
+    netPayableSalary: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      comment: "Final salary after all additions & deductions",
+    },
+
+    // ✅ Salary Status
+    status: {
+      type: Sequelize.ENUM("PENDING", "RELEASED"),
+      allowNull: false,
+      defaultValue: "PENDING",
+    },
+
+    // ✅ Salary Release Date
+    releaseDate: {
+      type: Sequelize.DATE,
+      allowNull: true, // null until released
+    },
+
+    // ✅ Who released the salary
+    releasedBy: {
+      type: Sequelize.INTEGER,
+      allowNull: true,
+      references: {
+        model: "Users",
+        key: "id",
       },
     },
 
+    // ✅ Full Calculation Snapshot (Attendance, overtime, days, etc.)
     calculationSnapshot: {
       type: Sequelize.JSON,
       allowNull: true,
       defaultValue: {},
       comment:
-        "Full salary calculation snapshot: attendance, salary days, overtime, deductions.",
-    },
-
-    releaseDate: {
-      type: Sequelize.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.NOW,
-    },
-
-    releasedBy: {
-      type: Sequelize.INTEGER,
-      allowNull: false,
-      references: {
-        model: "Users",
-        key: "id",
-      },
+        "Full calculation snapshot: attendance, working days, overtime, deductions, etc.",
     },
   },
   {
     tableName: "PayrollReleases",
     timestamps: true,
     indexes: [
-      // Prevent duplicate FULL salary release for same user + same period
+      // ✅ Unique index: (userId + salaryMonth)
       {
         unique: true,
-        fields: ["userId", "startDate", "endDate", "releaseType"],
-        where: {
-          releaseType: "FULL",
-        },
-        name: "unique_full_salary_period",
+        fields: ["userId", "salaryMonth"],
       },
       // Fast lookup by user
       {
         fields: ["userId"],
       },
       {
-        fields: ["startDate", "endDate"],
+        fields: ["salaryMonth"],
       },
     ],
   }
