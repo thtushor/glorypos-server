@@ -3,12 +3,14 @@ const express = require("express");
 const {
   AuthService,
   PayrollService,
-  BulkPayrollService,
+  BulkPayrollService, // Keep if BulkPayrollService is still used elsewhere
 } = require("../services");
 const requestHandler = require("../utils/requestHandler");
 const { addShopAccess } = require("../middleware/shopAccessMiddleware"); // Assume similar auth
 
 const router = express.Router();
+
+// === ATTENDANCE ROUTES (Existing) ===
 router.post(
   "/attendance/present/multiple",
   AuthService.authenticate,
@@ -64,7 +66,7 @@ router.delete(
   })
 );
 
-// Create leave request (case 6)
+// === LEAVE REQUEST ROUTES (Existing) ===
 router.post(
   "/leave",
   AuthService.authenticate,
@@ -78,7 +80,6 @@ router.post(
   })
 );
 
-// === GET LEAVE HISTORY (Admin) ===
 router.get(
   "/leave/history",
   AuthService.authenticate,
@@ -89,7 +90,6 @@ router.get(
   })
 );
 
-// Update leave status (case 6)
 router.put(
   "/leave/:id",
   AuthService.authenticate,
@@ -104,7 +104,7 @@ router.put(
   })
 );
 
-// Add holiday (case 7)
+// === HOLIDAY ROUTES (Existing) ===
 router.post(
   "/holiday",
   AuthService.authenticate,
@@ -115,7 +115,6 @@ router.post(
   })
 );
 
-// Get holidays (case 7)
 router.get(
   "/holidays",
   AuthService.authenticate,
@@ -126,7 +125,7 @@ router.get(
   })
 );
 
-// Promotion (case 8)
+// === PROMOTION ROUTES (Existing) ===
 router.post(
   "/promotion",
   AuthService.authenticate,
@@ -136,7 +135,7 @@ router.post(
     res.status(result.status ? 200 : 400).json(result);
   })
 );
-// GET promotion history for ONE employee (any admin)
+
 router.get(
   "/promotion/history/:userId",
   AuthService.authenticate,
@@ -147,7 +146,6 @@ router.get(
   })
 );
 
-// GET promotion history for ALL employees (any admin)
 router.get(
   "/promotion/history",
   AuthService.authenticate,
@@ -158,93 +156,56 @@ router.get(
   })
 );
 
-// Get salary details (case 5)
+// === NEW PAYROLL ROUTES ===
+
+// Get payroll calculation details (preview for a month)
 router.post(
-  "/salary/details",
+  "/payroll/details",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const { userId, startDate, endDate } = req.body;
+    const { userId, salaryMonth } = req.body;
     const adminId = req.user.id;
-
-    const result = await PayrollService.getSalaryDetailsInRange(
+    const result = await PayrollService.calculateMonthlyPayrollDetails(
       adminId,
       userId,
-      startDate,
-      endDate
+      salaryMonth
     );
-
     res.status(result.status ? 200 : 400).json(result);
   })
 );
 
-// Release full salary
+// Generate monthly payroll for an employee
 router.post(
-  "/release-full",
+  "/payroll/generate",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releaseFullSalary(req.user.id, req.body);
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
-
-// Release advance salary
-router.post(
-  "/release-advance",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releaseAdvanceSalary(
+    const result = await PayrollService.generateMonthlyPayroll(
       req.user.id,
       req.body
     );
-    res.status(result.status ? 200 : 400).json(result);
+    res.status(result.status ? 201 : 400).json(result);
   })
 );
 
-// Release partial salary
-router.post(
-  "/release-partial",
+// Release a specific payroll
+router.put(
+  "/payroll/release/:id",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releasePartialSalary(
+    const result = await PayrollService.releasePayroll(
       req.user.id,
-      req.body
+      req.params.id
     );
     res.status(result.status ? 200 : 400).json(result);
   })
 );
 
-// Release bonus
-router.post(
-  "/release-bonus",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releaseBonus(req.user.id, req.body);
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
-
-// Release salary for all employees
-router.post(
-  "/release-all",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await BulkPayrollService.releaseSalaryForAll(
-      req.user.id,
-      req.body
-    );
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
-
-// Get full release history
+// Get full payroll release history (admin view)
 router.get(
-  "/release/history",
+  "/payroll/history",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
@@ -253,13 +214,108 @@ router.get(
   })
 );
 
-// Get release history (extra)
+// Get single user payroll release history
 router.get(
-  "/history/:userId",
+  "/payroll/history/:userId",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.getReleaseHistory(req.params.userId);
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// === ADVANCE SALARY ROUTES ===
+router.post(
+  "/advance-salary",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.createAdvanceSalary(
+      req.user.id,
+      req.body
+    );
+    res.status(result.status ? 201 : 400).json(result);
+  })
+);
+
+router.get(
+  "/advance-salary",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getAdvanceSalaries(
+      req.user.id,
+      req.query
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+router.put(
+  "/advance-salary/:id/status",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const { status } = req.body;
+    const result = await PayrollService.updateAdvanceSalaryStatus(
+      req.user.id,
+      req.params.id,
+      status
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+router.delete(
+  "/advance-salary/:id",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.deleteAdvanceSalary(
+      req.user.id,
+      req.params.id
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+// === PAYROLL FINE ROUTES ===
+router.post(
+  "/payroll-fine",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.createPayrollFine(
+      req.user.id,
+      req.body
+    );
+    res.status(result.status ? 201 : 400).json(result);
+  })
+);
+
+router.get(
+  "/payroll-fine",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.getPayrollFines(
+      req.user.id,
+      req.query
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
+router.delete(
+  "/payroll-fine/:id",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.deletePayrollFine(
+      req.user.id,
+      req.params.id
+    );
     res.status(result.status ? 200 : 400).json(result);
   })
 );

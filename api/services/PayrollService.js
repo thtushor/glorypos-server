@@ -13,6 +13,8 @@ const {
   StuffCommission,
   EmployeeLoan,
   LoanPayment,
+  AdvanceSalary, // Added
+  PayrollFine,   // Added
 } = require("../entity");
 
 const PayrollService = {
@@ -171,11 +173,7 @@ const PayrollService = {
 
       await record.update(updateData);
 
-      return {
-        status: true,
-        message: `Attendance updated: ${type.toUpperCase()}`,
-        data: record,
-      };
+      return { status: true, message: `Attendance updated: ${type.toUpperCase()}`, data: record };
     } catch (error) {
       return { status: false, message: error.message };
     }
@@ -299,7 +297,7 @@ const PayrollService = {
         },
       };
     } catch (error) {
-      console.error("LeaveHistory Error:", error); // ← Log for debugging
+      console.error("LeaveHistory Error:", error);
       return { status: false, message: error.message };
     }
   },
@@ -348,16 +346,9 @@ const PayrollService = {
         createdBy: adminId, // this admin added = approved
       });
 
-      return {
-        status: true,
-        message: "Holiday added successfully",
-        data: holiday,
-      };
+      return { status: true, message: "Holiday added successfully", data: holiday };
     } catch (error) {
-      return {
-        status: false,
-        message: error.message || "Failed to add holiday",
-      };
+      return { status: false, message: error.message };
     }
   },
 
@@ -421,26 +412,10 @@ const PayrollService = {
 
       const totalPages = Math.ceil(count / pageSizeNum);
 
-      return {
-        status: true,
-        message: "Holidays fetched successfully",
-        data: {
-          holidays: rows,
-          pagination: {
-            page: pageNum,
-            pageSize: pageSizeNum,
-            totalCount: count,
-            totalPages,
-            hasMore: pageNum < totalPages,
-          },
-        },
-      };
+      return { status: true, message: "Holidays fetched successfully", data: { holidays: rows, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages, hasMore: pageNum < totalPages, }, }, };
     } catch (error) {
       console.error("GetHolidays Error:", error);
-      return {
-        status: false,
-        message: error.message || "Failed to fetch holidays",
-      };
+      return { status: false, message: error.message };
     }
   },
 
@@ -516,11 +491,7 @@ const PayrollService = {
         ],
       });
 
-      return {
-        status: true,
-        message: "Promotion history fetched",
-        data: { userId, history },
-      };
+      return { status: true, message: "Promotion history fetched", data: { userId, history }, };
     } catch (error) {
       return { status: false, message: error.message };
     }
@@ -563,46 +534,88 @@ const PayrollService = {
 
       const totalPages = Math.ceil(count / pageSizeNum);
 
-      return {
-        status: true,
-        message: "All promotion history fetched",
-        data: {
-          history: rows,
-          pagination: {
-            page: pageNum,
-            pageSize: pageSizeNum,
-            totalCount: count,
-            totalPages,
-            hasMore: pageNum < totalPages,
-          },
-        },
-      };
+      return { status: true, message: "All promotion history fetched", data: { history: rows, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages, hasMore: pageNum < totalPages, }, }, };
     } catch (error) {
       console.error("getAllPromotionHistory error:", error);
       return { status: false, message: error.message };
     }
   },
 
-  // Case 5,6: Get salary details for month (preview)
-  async getSalaryDetailsInRange(adminId, userId, startDate, endDate) {
+  // Case 5,6: Get salary details for month (preview) - Renamed and refactored
+  async calculateMonthlyPayrollDetails(adminId, userId, salaryMonth) {
     try {
-      const start = moment(startDate);
-      const end = moment(endDate);
+      // Derive start and end dates from salaryMonth
+      const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+      const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
 
-      if (!start.isValid() || !end.isValid() || start > end) {
-        throw new Error("Invalid startDate or endDate");
+      if (!monthStart.isValid() || !monthEnd.isValid()) {
+        throw new Error("Invalid salaryMonth format. Use YYYY-MM.");
       }
 
+      const startDate = monthStart.format("YYYY-MM-DD");
+      const endDate = monthEnd.format("YYYY-MM-DD");
+
+      // Fetch user details including base salary
       const user = await UserRole.findOne({
         where: { id: userId, parentUserId: adminId },
         attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
       });
 
-      if (!user || !user.baseSalary || !user.requiredDailyHours) {
-        throw new Error("User not found or salary/hours not configured");
+      // Use baseSalary from User model, as UserRole might not have it directly.
+      const baseSalary = parseFloat(user.baseSalary);
+
+      if (!user || !baseSalary || !user.requiredDailyHours) {
+        throw new Error("User not found or base salary/hours not configured");
       }
 
-      const baseSalary = parseFloat(user.baseSalary);
+      // Fetch additional payroll components
+      const [advanceSalaries, employeeLoan, payrollFines, stuffCommissions] = await Promise.all([
+        AdvanceSalary.findAll({
+          where: { userId, salaryMonth, status: "APPROVED" },
+          attributes: ["amount"],
+        }),
+        EmployeeLoan.findOne({
+          where: { employeeId: userId, status: "ACTIVE" },
+          attributes: ["monthlyEMI", "remainingBalance"],
+        }),
+        PayrollFine.findAll({
+          where: { userId, salaryMonth },
+          attributes: ["amount"],
+        }),
+        StuffCommission.findAll({
+          where: {
+            UserRoleId: userId,
+            createdAt: {
+              [Op.gte]: monthStart.toDate(),
+              [Op.lte]: monthEnd.toDate(),
+            },
+          },
+        }),
+      ]);
+
+      const totalAdvance = advanceSalaries.reduce(
+        (sum, adv) => sum + parseFloat(adv.amount),
+        0
+      );
+
+      let loanDeduction = 0;
+      if (employeeLoan && parseFloat(employeeLoan.remainingBalance) > 0) {
+        loanDeduction = Math.min(
+          parseFloat(employeeLoan.monthlyEMI),
+          parseFloat(employeeLoan.remainingBalance)
+        );
+      }
+
+      const totalFine = payrollFines.reduce(
+        (sum, fine) => sum + parseFloat(fine.amount),
+        0
+      );
+
+      const totalCommission = stuffCommissions.reduce(
+        (acc, comm) => acc + parseFloat(comm.commissionAmount),
+        0
+      );
+
       const requiredDailyHours = parseInt(user.requiredDailyHours);
 
       const weekendDays = process.env.WEEKEND_DAYS
@@ -684,9 +697,7 @@ const PayrollService = {
         // Skip weekends
         if (weekendDays.includes(dayOfWeek)) {
           totalWeekendDays++;
-          currentDateStr = moment(currentDateStr)
-            .add(1, "day")
-            .format("YYYY-MM-DD");
+          currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
           continue;
         }
 
@@ -718,9 +729,7 @@ const PayrollService = {
         if (leaveDates.has(currentDateStr)) totalLeaveDays++;
 
         // Next day
-        currentDateStr = moment(currentDateStr)
-          .add(1, "day")
-          .format("YYYY-MM-DD");
+        currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
       }
 
       // Final calculations
@@ -730,41 +739,32 @@ const PayrollService = {
       );
       const netAbsentHours = Number((netAbsentMinutes / 60).toFixed(2));
 
-      const requiredTotalHours = Number(
-        (totalWorkingDays * requiredDailyHours).toFixed(2)
-      );
-      const workedHours = Number(
-        (requiredTotalHours - netAbsentHours).toFixed(2)
-      );
+      const requiredTotalHours = Number((totalWorkingDays * requiredDailyHours).toFixed(2));
+      const workedHours = Number((requiredTotalHours - netAbsentHours).toFixed(2));
 
-      const totalMinutesIn30Days = 30 * requiredDailyHours * 60;
-      const perMinuteRate = baseSalary / totalMinutesIn30Days;
-      const netSalary = Number(
-        (totalMinutesIn30Days - netAbsentMinutes) * perMinuteRate
-      ).toFixed(2);
+      const totalMinutesInMonth = totalWorkingDays * requiredDailyHours * 60; // Total expected minutes for the working days in the month
+      const perMinuteRate = baseSalary / totalMinutesInMonth; // Per minute rate based on base salary for actual working days
+      const netAttendanceSalary = Number((totalMinutesInMonth - netAbsentMinutes) * perMinuteRate).toFixed(2);
 
-      const commissions = await StuffCommission.findAll({
-        where: {
-          UserRoleId: userId,
-          createdAt: {
-            [Op.gte]: moment(startDate).toDate(),
-            [Op.lte]: moment(endDate).toDate(),
-          },
-        },
-      });
+      // Placeholder for bonusAmount (Rule 2) - should be fetched from a Bonus table if implemented
+      const bonusAmount = totalCommission; // Using totalCommission as bonusAmount for now
+      const bonusDescription = null; // Placeholder for bonusDescription
 
-      const totalCommission = commissions.reduce(
-        (acc, comm) => acc + parseFloat(comm.commissionAmount),
-        0
-      );
+      // Placeholder for overtimeAmount (Rule 5) - should be fetched from an Overtime table if implemented
+      // For now, calculate based on extra minutes
+      const overtimeAmount = Number((totalExtraMinutes / 60).toFixed(2)) * (baseSalary / (30 * requiredDailyHours)); // Rough calculation
 
-      const finalSalary = parseFloat(netSalary) + totalCommission;
+      // Placeholder for otherDeduction (Rule 6) - should be fetched from an OtherDeduction table if implemented
+      const otherDeduction = 0;
+
+      // ✅ Final netPayableSalary calculation (Rule 7)
+      const netPayableSalary =
+        parseFloat(netAttendanceSalary) + bonusAmount + overtimeAmount - totalAdvance - loanDeduction - totalFine - otherDeduction;
 
       const data = {
         userId,
         fullName: user.fullName,
-        startDate,
-        endDate,
+        salaryMonth,
         baseSalary,
         requiredDailyHours,
         totalWorkingDays,
@@ -772,394 +772,160 @@ const PayrollService = {
         requiredTotalHours,
         workedHours,
         absentHours: netAbsentHours,
-        overtimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
+        calculatedOvertimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
         totalLeaveDays,
         totalHolidayDays,
-        netSalary: Math.max(0, parseFloat(netSalary)),
-        totalCommission,
-        finalSalary,
+        netAttendanceSalary: Math.max(0, parseFloat(netAttendanceSalary)), // Based on attendance
+        bonusAmount: bonusAmount,
+        bonusDescription: bonusDescription,
+        overtimeAmount: overtimeAmount,
+        advanceAmount: totalAdvance,
+        loanDeduction: loanDeduction,
+        fineAmount: totalFine,
+        otherDeduction: otherDeduction,
+        netPayableSalary: Math.max(0, netPayableSalary),
+        status: "PENDING", // Default status for generated payroll
+        releaseDate: null,
+        releasedBy: null,
       };
 
-      return {
-        status: true,
-        message: "Salary calculated successfully",
-        data,
-      };
+      return { status: true, message: "Salary calculated successfully", data };
     } catch (error) {
       return { status: false, message: error.message };
     }
   },
 
-  async getSalaryDetailsInRange(adminId, userId, startDate, endDate) {
-    try {
-      const start = moment(startDate);
-      const end = moment(endDate);
-
-      if (!start.isValid() || !end.isValid() || start > end) {
-        throw new Error("Invalid startDate or endDate");
-      }
-
-      const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
-        attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
-      });
-
-      if (!user || !user.baseSalary || !user.requiredDailyHours) {
-        throw new Error("User not found or salary/hours not configured");
-      }
-
-      const baseSalary = parseFloat(user.baseSalary);
-      const requiredDailyHours = parseInt(user.requiredDailyHours);
-
-      const weekendDays = process.env.WEEKEND_DAYS
-        ? process.env.WEEKEND_DAYS.split(",").map(Number)
-        : [3]; // Friday
-
-      const [holidays, approvedLeaves, attendances] = await Promise.all([
-        Holiday.findAll({
-          where: {
-            startDate: { [Op.lte]: endDate },
-            endDate: { [Op.gte]: startDate },
-          },
-        }),
-        LeaveRequest.findAll({
-          where: {
-            userId,
-            status: "approved",
-            startDate: { [Op.lte]: endDate },
-            endDate: { [Op.gte]: startDate },
-          },
-        }),
-        Attendance.findAll({
-          where: {
-            userId,
-            date: { [Op.gte]: startDate, [Op.lte]: endDate },
-          },
-          attributes: [
-            "date",
-            "type",
-            "isHalfDay",
-            "lateMinutes",
-            "extraMinutes",
-          ],
-          raw: true,
-        }),
-      ]);
-
-      console.log("holidays", holidays);
-
-      // Build holiday & leave sets
-      const holidayDates = new Set();
-      holidays.forEach((h) => {
-        let d = moment(h.startDate);
-        const e = moment(h.endDate);
-        while (d <= e) {
-          holidayDates.add(d.format("YYYY-MM-DD"));
-          d.add(1, "day");
-        }
-      });
-
-      const leaveDates = new Set();
-      approvedLeaves.forEach((leave) => {
-        let d = moment(leave.startDate);
-        const e = moment(leave.endDate);
-        while (d <= e) {
-          leaveDates.add(d.format("YYYY-MM-DD"));
-          d.add(1, "day");
-        }
-      });
-
-      // Attendance map - keys are exact string dates from DB
-      const attendanceMap = {};
-      attendances.forEach((att) => {
-        attendanceMap[att.date] = att;
-      });
-
-      // console.log("attendanceMap", attendanceMap);
-
-      // Counters
-      let totalWorkingDays = 0;
-      let totalWeekendDays = 0;
-      let totalAbsentMinutes = 0;
-      let totalExtraMinutes = 0;
-      let totalHolidayDays = 0;
-      let totalLeaveDays = 0;
-
-      // STRING-BASED LOOP - 100% SAFE FROM TIMEZONE ISSUES
-      let currentDateStr = startDate; // e.g. "2025-11-01"
-      console.log(currentDateStr, "<=>", currentDateStr);
-      while (currentDateStr <= endDate) {
-        const dayOfWeek = moment(currentDateStr).day();
-
-        if (weekendDays.includes(dayOfWeek)) {
-          totalWeekendDays++;
-          currentDateStr = moment(currentDateStr)
-            .add(1, "day")
-            .format("YYYY-MM-DD");
-          continue;
-        }
-
-        if (holidayDates.has(currentDateStr)) {
-          totalHolidayDays++;
-          totalWorkingDays++;
-          currentDateStr = moment(currentDateStr)
-            .add(1, "day")
-            .format("YYYY-MM-DD");
-          continue;
-        }
-
-        if (leaveDates.has(currentDateStr)) {
-          totalLeaveDays++;
-          totalWorkingDays++;
-          currentDateStr = moment(currentDateStr)
-            .add(1, "day")
-            .format("YYYY-MM-DD");
-          continue;
-        }
-
-        totalWorkingDays++;
-
-        // console.log("currentDateStr up", "<=>", currentDateStr);
-        // console.log("attendanceMap", "<=>", attendanceMap);
-        const att = attendanceMap[currentDateStr]; // EXACT MATCH - WILL BE FOUND
-        // console.log("Date:", currentDateStr, "Attendance:", att);
-
-        let absentMinutesToday = 0;
-
-        if (att) {
-          if (att.type === "absent") {
-            // FULL DAY ABSENT - ALWAYS 8 HOURS
-            absentMinutesToday = requiredDailyHours * 60;
-          } else if (att.type === "present") {
-            if (att.isHalfDay)
-              absentMinutesToday += requiredDailyHours * 60 * 0.5;
-            if (att.lateMinutes > 0)
-              absentMinutesToday += parseInt(att.lateMinutes);
-            if (att.extraMinutes > 0)
-              totalExtraMinutes += parseInt(att.extraMinutes);
-          }
-        }
-        // No record = full present = 0 absent minutes
-
-        totalAbsentMinutes += absentMinutesToday;
-        currentDateStr = moment(currentDateStr)
-          .add(1, "day")
-          .format("YYYY-MM-DD");
-      }
-
-      // Final calculations
-      const netAbsentMinutes = Math.max(
-        0,
-        totalAbsentMinutes - totalExtraMinutes
-      );
-      const netAbsentHours = Number((netAbsentMinutes / 60).toFixed(2));
-
-      const requiredTotalHours = Number(
-        (totalWorkingDays * requiredDailyHours).toFixed(2)
-      );
-      const workedHours = Number(
-        (requiredTotalHours - netAbsentHours).toFixed(2)
-      );
-
-      const totalMinutesIn30Days = 30 * requiredDailyHours * 60;
-      const perMinuteRate = baseSalary / totalMinutesIn30Days;
-      const netSalary = Number(
-        (totalMinutesIn30Days - netAbsentMinutes) * perMinuteRate
-      ).toFixed(2);
-
-      const data = {
-        userId,
-        fullName: user.fullName,
-        startDate,
-        endDate,
-        baseSalary,
-        requiredDailyHours,
-        totalWorkingDays,
-        totalWeekendDays,
-        requiredTotalHours,
-        workedHours,
-        absentHours: netAbsentHours,
-        overtimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
-        totalLeaveDays,
-        totalHolidayDays,
-        netSalary: Math.max(0, parseFloat(netSalary)),
-      };
-
-      return {
-        status: true,
-        message: "Salary calculated successfully",
-        data,
-      };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
-
-  async releaseFullSalary(adminId, { employeeId, startDate, endDate }) {
+  // \u2705 Payroll Monthly Auto Generator API
+  async generateMonthlyPayroll(adminId, { userId, salaryMonth }) {
     const transaction = await sequelize.transaction();
     try {
-      // Step 1: Calculate the definitive salary details on the backend
-      const salaryDetailsResult = await this.getSalaryDetailsInRange(
+      // Prevent duplicate salary for same user + same month
+      const existingPayroll = await PayrollRelease.findOne({
+        where: { userId, salaryMonth },
+        transaction,
+      });
+
+      if (existingPayroll) {
+        throw new Error("Payroll already generated for this user and month.");
+      }
+
+      const salaryDetailsResult = await this.calculateMonthlyPayrollDetails(
         adminId,
-        employeeId,
-        startDate,
-        endDate
+        userId,
+        salaryMonth
       );
 
       if (!salaryDetailsResult.status) {
         throw new Error(
-          `Failed to calculate salary for employee ${employeeId}: ${salaryDetailsResult.message}`
+          `Failed to calculate salary for employee ${userId}: ${salaryDetailsResult.message}`
         );
       }
 
-      const { finalSalary, ...calculationSnapshot } = salaryDetailsResult.data;
+      const calculationSnapshot = salaryDetailsResult.data; // All data is the snapshot
 
-      // Step 2: Create the full salary release record with the calculated amount
-      const salaryRelease = await PayrollRelease.create(
+      const payrollRelease = await PayrollRelease.create(
         {
-          userId: employeeId,
-          startDate,
-          endDate,
-          releaseType: "FULL",
-          amount: finalSalary, // Use the calculated final salary
-          calculationSnapshot,
-          releasedBy: adminId,
+          userId,
+          salaryMonth,
+          baseSalary: calculationSnapshot.baseSalary,
+          advanceAmount: calculationSnapshot.advanceAmount,
+          bonusAmount: calculationSnapshot.bonusAmount,
+          bonusDescription: calculationSnapshot.bonusDescription,
+          loanDeduction: calculationSnapshot.loanDeduction,
+          fineAmount: calculationSnapshot.fineAmount,
+          overtimeAmount: calculationSnapshot.overtimeAmount,
+          otherDeduction: calculationSnapshot.otherDeduction,
+          netPayableSalary: calculationSnapshot.netPayableSalary,
+          status: "PENDING",
+          releaseDate: null,
+          releasedBy: null,
+          calculationSnapshot: calculationSnapshot,
         },
         { transaction }
       );
 
-      // 2. Check for active loans and deduct EMI
-      const activeLoan = await EmployeeLoan.findOne({
-        where: { employeeId, status: "ACTIVE" },
-        transaction,
-      });
-
-      if (activeLoan) {
-        const emi = parseFloat(activeLoan.monthlyEMI);
-        const remaining = parseFloat(activeLoan.remainingBalance);
-        const deductionAmount = Math.min(emi, remaining);
-
-        // Create a loan deduction entry in PayrollRelease
-        await PayrollRelease.create(
-          {
-            userId: employeeId,
-            startDate,
-            endDate,
-            releaseType: "LOAN_DEDUCTION",
-            amount: deductionAmount,
-            calculationSnapshot: {
-              loanId: activeLoan.id,
-              emi: emi,
-              originalSnapshot: calculationSnapshot,
-            },
-            releasedBy: adminId,
-          },
-          { transaction }
-        );
-
-        // Create a record in LoanPayment
-        await LoanPayment.create(
-          {
-            loanId: activeLoan.id,
-            employeeId,
-            paidAmount: deductionAmount,
-            paidBy: adminId,
-          },
-          { transaction }
-        );
-
-        // Update the loan's remaining balance
-        const newRemainingBalance = remaining - deductionAmount;
-        activeLoan.remainingBalance = newRemainingBalance;
-        if (newRemainingBalance <= 0) {
-          activeLoan.status = "COMPLETED";
-        }
-        await activeLoan.save({ transaction });
-      }
-
       await transaction.commit();
-      return {
-        status: true,
-        message: "Full salary released successfully.",
-        data: salaryRelease,
-      };
+      return { status: true, message: "Monthly payroll generated successfully", data: payrollRelease };
     } catch (error) {
       await transaction.rollback();
       return { status: false, message: error.message };
     }
   },
 
-  async releaseAdvanceSalary(adminId, { employeeId, amount, notes }) {
+  // \u2705 Salary Release API
+  async releasePayroll(adminId, payrollReleaseId) {
+    const transaction = await sequelize.transaction();
     try {
-      const release = await PayrollRelease.create({
-        userId: employeeId,
-        startDate: moment().startOf("month").format("YYYY-MM-DD"),
-        endDate: moment().endOf("month").format("YYYY-MM-DD"),
-        releaseType: "ADVANCE",
-        amount,
-        calculationSnapshot: { notes },
-        releasedBy: adminId,
+      const payrollRelease = await PayrollRelease.findOne({
+        where: { id: payrollReleaseId },
+        transaction,
       });
-      return {
-        status: true,
-        message: "Advance salary released.",
-        data: release,
-      };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
 
-  async releasePartialSalary(adminId, { employeeId, amount, notes }) {
-    try {
-      const release = await PayrollRelease.create({
-        userId: employeeId,
-        startDate: moment().startOf("month").format("YYYY-MM-DD"),
-        endDate: moment().endOf("month").format("YYYY-MM-DD"),
-        releaseType: "PARTIAL",
-        amount,
-        calculationSnapshot: { notes },
-        releasedBy: adminId,
-      });
-      return {
-        status: true,
-        message: "Partial salary released.",
-        data: release,
-      };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
+      if (!payrollRelease) {
+        throw new Error("Payroll record not found.");
+      }
 
-  async releaseBonus(adminId, { employeeId, amount, notes }) {
-    try {
-      const release = await PayrollRelease.create({
-        userId: employeeId,
-        startDate: moment().startOf("month").format("YYYY-MM-DD"),
-        endDate: moment().endOf("month").format("YYYY-MM-DD"),
-        releaseType: "BONUS",
-        amount,
-        calculationSnapshot: { notes },
-        releasedBy: adminId,
-      });
-      return { status: true, message: "Bonus released.", data: release };
+      if (payrollRelease.status === "RELEASED") {
+        throw new Error("Payroll has already been released.");
+      }
+
+      // Update loan outstanding balance if loan deduction was part of this payroll
+      if (payrollRelease.loanDeduction > 0) {
+        const employeeLoan = await EmployeeLoan.findOne({
+          where: { employeeId: payrollRelease.userId, status: "ACTIVE" },
+          transaction,
+        });
+
+        if (employeeLoan) {
+          const newRemainingBalance = parseFloat(employeeLoan.remainingBalance) - parseFloat(payrollRelease.loanDeduction);
+          await employeeLoan.update(
+            {
+              remainingBalance: newRemainingBalance,
+              status: newRemainingBalance <= 0 ? "COMPLETED" : "ACTIVE",
+            },
+            { transaction }
+          );
+          await LoanPayment.create(
+            {
+              loanId: employeeLoan.id,
+              employeeId: payrollRelease.userId,
+              paidAmount: payrollRelease.loanDeduction,
+              paidBy: adminId,
+            },
+            { transaction }
+          );
+        }
+      }
+
+      await payrollRelease.update(
+        {
+          status: "RELEASED",
+          releaseDate: moment().toDate(),
+          releasedBy: adminId,
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+      return { status: true, message: "Payroll released successfully", data: payrollRelease };
     } catch (error) {
+      await transaction.rollback();
       return { status: false, message: error.message };
     }
   },
 
   // NEW: Full release history (admin view)
-  // PayrollService.js - Updated for startDate/endDate system
+  // PayrollService.js - Updated for salaryMonth system
   async getFullReleaseHistory(query = {}) {
     try {
       const {
         page = 1,
         pageSize = 20,
         userId,
-        startDate, // e.g. "2025-11-01"
-        endDate, // e.g. "2025-11-30"
-        periodStart, // Optional: filter by salary period start
-        periodEnd, // Optional: filter by salary period end
+        salaryMonth, // Filter by salary month
+        status,
+        releaseStartDate,
+        releaseEndDate,
       } = query;
 
       const pageNum = Math.max(1, Number(page) || 1);
@@ -1172,20 +938,19 @@ const PayrollService = {
       if (userId) {
         where.userId = Number(userId);
       }
-
-      // Filter by salary period (most useful)
-      if (periodStart || periodEnd) {
-        where.startDate = {};
-        if (periodStart) where.startDate[Op.gte] = periodStart;
-        if (periodEnd) where.startDate[Op.lte] = periodEnd;
+      if (salaryMonth) {
+        where.salaryMonth = salaryMonth;
+      }
+      if (status) {
+        where.status = status;
       }
 
-      // OR: Filter by when salary was released
-      if (startDate || endDate) {
+      // Filter by when salary was released
+      if (releaseStartDate || releaseEndDate) {
         where.releaseDate = {};
-        if (startDate) where.releaseDate[Op.gte] = startDate;
-        if (endDate)
-          where.releaseDate[Op.lte] = new Date(endDate + "T23:59:59.999Z"); // include full day
+        if (releaseStartDate) where.releaseDate[Op.gte] = releaseStartDate;
+        if (releaseEndDate)
+          where.releaseDate[Op.lte] = moment(releaseEndDate).endOf('day').toDate(); // include full day
       }
 
       const { count, rows } = await PayrollRelease.findAndCountAll({
@@ -1202,7 +967,7 @@ const PayrollService = {
             attributes: ["id", "fullName"],
           },
         ],
-        order: [["releaseDate", "DESC"]],
+        order: [["salaryMonth", "DESC"]],
         limit: pageSizeNum,
         offset,
         distinct: true,
@@ -1218,36 +983,27 @@ const PayrollService = {
         fullName: r.UserRole?.fullName || "Unknown",
         email: r.UserRole?.email || "Unknown",
         role: r.UserRole?.role || "-",
-        period: `${moment(r.startDate).format("DD MMM YYYY")} – ${moment(
-          r.endDate
-        ).format("DD MMM YYYY")}`,
-        releasedAmount: Number(r.releasedAmount),
-        releasedOn: moment(r.releaseDate).format("DD MMM YYYY, hh:mm A"),
-        releaserId: r.releaser?.id || "System",
-        releaserFullname: r.releaser?.fullName || "System",
-        details: r.details || {},
+        salaryMonth: r.salaryMonth,
+        baseSalary: Number(r.baseSalary),
+        advanceAmount: Number(r.advanceAmount),
+        bonusAmount: Number(r.bonusAmount),
+        bonusDescription: r.bonusDescription,
+        loanDeduction: Number(r.loanDeduction),
+        fineAmount: Number(r.fineAmount),
+        overtimeAmount: Number(r.overtimeAmount),
+        otherDeduction: Number(r.otherDeduction),
+        netPayableSalary: Number(r.netPayableSalary),
+        status: r.status,
+        releaseDate: r.releaseDate ? moment(r.releaseDate).format("DD MMM YYYY, hh:mm A") : null,
+        releaserId: r.releaser?.id || null,
+        releaserFullname: r.releaser?.fullName || null,
+        calculationSnapshot: r.calculationSnapshot || {},
       }));
 
-      return {
-        status: true,
-        message: "Salary release history fetched successfully",
-        data: {
-          history,
-          pagination: {
-            page: pageNum,
-            pageSize: pageSizeNum,
-            totalCount: count,
-            totalPages,
-            hasMore: pageNum < totalPages,
-          },
-        },
-      };
+      return { status: true, message: "Salary release history fetched successfully", data: { history, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages, hasMore: pageNum < totalPages, }, }, };
     } catch (error) {
       console.error("getFullReleaseHistory error:", error);
-      return {
-        status: false,
-        message: error.message || "Failed to fetch release history",
-      };
+      return { status: false, message: error.message || "Failed to fetch release history", };
     }
   },
 
@@ -1264,9 +1020,208 @@ const PayrollService = {
           },
           { model: User, as: "releaser", attributes: ["fullName"] },
         ],
-        order: [["month", "DESC"]],
+        order: [["salaryMonth", "DESC"]],
       });
-      return { status: true, data: history };
+      // Format the data to match the new PayrollRelease structure
+      const formattedHistory = history.map(r => ({
+        id: r.id,
+        userId: r.userId,
+        fullName: r.UserRole?.fullName || "Unknown",
+        email: r.UserRole?.email || "Unknown",
+        salaryMonth: r.salaryMonth,
+        baseSalary: Number(r.baseSalary),
+        advanceAmount: Number(r.advanceAmount),
+        bonusAmount: Number(r.bonusAmount),
+        bonusDescription: r.bonusDescription,
+        loanDeduction: Number(r.loanDeduction),
+        fineAmount: Number(r.fineAmount),
+        overtimeAmount: Number(r.overtimeAmount),
+        otherDeduction: Number(r.otherDeduction),
+        netPayableSalary: Number(r.netPayableSalary),
+        status: r.status,
+        releaseDate: r.releaseDate ? moment(r.releaseDate).format("DD MMM YYYY, hh:mm A") : null,
+        releaserId: r.releaser?.id || null,
+        releaserFullname: r.releaser?.fullName || null,
+        calculationSnapshot: r.calculationSnapshot || {},
+      }));
+      return { status: true, data: formattedHistory };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  // === ADVANCE SALARY CRUD ===
+  async createAdvanceSalary(adminId, { userId, salaryMonth, amount, reason }) {
+    try {
+      const user = await UserRole.findOne({
+        where: { id: userId, parentUserId: adminId },
+        attributes: ["id", "fullName", "baseSalary"],
+      });
+      if (!user) throw new Error("Employee not found.");
+
+      const baseSalary = parseFloat(user.baseSalary);
+      if (amount > baseSalary) {
+        throw new Error("Advance amount cannot exceed base salary.");
+      }
+
+      const advance = await AdvanceSalary.create({
+        userId,
+        salaryMonth,
+        amount,
+        reason,
+        status: "PENDING",
+        approvedBy: null, // Initially null
+      });
+      return { status: true, message: "Advance salary request created.", data: advance };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async getAdvanceSalaries(adminId, query = {}) {
+    try {
+      const { page = 1, pageSize = 10, userId, status, salaryMonth } = query;
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 10;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      const userWhere = { parentUserId: adminId };
+
+      if (userId) userWhere.id = Number(userId);
+      if (status) where.status = status;
+      if (salaryMonth) where.salaryMonth = salaryMonth;
+
+      const { count, rows } = await AdvanceSalary.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            where: userWhere,
+            attributes: ["id", "fullName", "email"],
+          },
+          {
+            model: User,
+            as: "approver",
+            attributes: ["id", "fullName"],
+            required: false,
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+      return { status: true, message: "Advance salaries fetched.", data: { advances: rows, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages }, }, };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async updateAdvanceSalaryStatus(adminId, advanceId, status) {
+    try {
+      const advance = await AdvanceSalary.findByPk(advanceId);
+      if (!advance) throw new Error("Advance salary record not found.");
+
+      // Ensure admin has rights to manage this user's advance
+      const user = await UserRole.findOne({
+        where: { id: advance.userId, parentUserId: adminId },
+      });
+      if (!user) throw new Error("Unauthorized to update this advance record.");
+
+      await advance.update({ status, approvedBy: adminId });
+      return { status: true, message: `Advance salary ${status.toLowerCase()}.`, data: advance };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async deleteAdvanceSalary(adminId, advanceId) {
+    try {
+      const advance = await AdvanceSalary.findByPk(advanceId);
+      if (!advance) throw new Error("Advance salary record not found.");
+
+      const user = await UserRole.findOne({
+        where: { id: advance.userId, parentUserId: adminId },
+      });
+      if (!user) throw new Error("Unauthorized to delete this advance record.");
+
+      await advance.destroy();
+      return { status: true, message: "Advance salary record deleted." };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  // === PAYROLL FINE CRUD ===
+  async createPayrollFine(adminId, { userId, salaryMonth, amount, reason }) {
+    try {
+      const user = await UserRole.findOne({
+        where: { id: userId, parentUserId: adminId },
+      });
+      if (!user) throw new Error("Employee not found.");
+
+      const fine = await PayrollFine.create({
+        userId,
+        salaryMonth,
+        amount,
+        reason,
+      });
+      return { status: true, message: "Payroll fine added.", data: fine };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async getPayrollFines(adminId, query = {}) {
+    try {
+      const { page = 1, pageSize = 10, userId, salaryMonth } = query;
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 10;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      const userWhere = { parentUserId: adminId };
+
+      if (userId) userWhere.id = Number(userId);
+      if (salaryMonth) where.salaryMonth = salaryMonth;
+
+      const { count, rows } = await PayrollFine.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            where: userWhere,
+            attributes: ["id", "fullName", "email"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: pageSizeNum,
+        offset,
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+      return { status: true, message: "Payroll fines fetched.", data: { fines: rows, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages }, }, };
+    } catch (error) {
+      return { status: false, message: error.message };
+    }
+  },
+
+  async deletePayrollFine(adminId, fineId) {
+    try {
+      const fine = await PayrollFine.findByPk(fineId);
+      if (!fine) throw new Error("Payroll fine record not found.");
+
+      const user = await UserRole.findOne({
+        where: { id: fine.userId, parentUserId: adminId },
+      });
+      if (!user) throw new Error("Unauthorized to delete this fine record.");
+
+      await fine.destroy();
+      return { status: true, message: "Payroll fine record deleted." };
     } catch (error) {
       return { status: false, message: error.message };
     }

@@ -13,7 +13,7 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'Users',
+          model: 'UserRole',
           key: 'id',
         },
         onDelete: 'CASCADE',
@@ -28,7 +28,7 @@ module.exports = {
         allowNull: false,
         validate: { min: 0 },
       },
-      reason: {
+      reasonss: {
         type: Sequelize.STRING,
         allowNull: true,
       },

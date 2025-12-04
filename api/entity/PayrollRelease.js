@@ -1,6 +1,8 @@
 // models/PayrollRelease.js
 const Sequelize = require("sequelize");
 const sequelize = require("../db");
+const User = require("./User");
+const UserRole = require("./UserRole");
 
 const PayrollRelease = sequelize.define(
   "PayrollRelease",
@@ -15,7 +17,7 @@ const PayrollRelease = sequelize.define(
       type: Sequelize.INTEGER,
       allowNull: false,
       references: {
-        model: "Users", // Updated reference
+        model: "UserRole", // Updated reference
         key: "id",
       },
       onDelete: "CASCADE",
@@ -80,14 +82,6 @@ const PayrollRelease = sequelize.define(
       validate: { min: 0 },
     },
 
-    // ✅ Commission (Optional but useful)
-    commissionAmount: {
-      type: Sequelize.DECIMAL(12, 2),
-      allowNull: false,
-      defaultValue: 0,
-      validate: { min: 0 },
-    },
-
     // ✅ Other Deductions
     otherDeduction: {
       type: Sequelize.DECIMAL(12, 2),
@@ -121,7 +115,7 @@ const PayrollRelease = sequelize.define(
       type: Sequelize.INTEGER,
       allowNull: true,
       references: {
-        model: "Users",
+        model: "User",
         key: "id",
       },
     },

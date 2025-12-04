@@ -139,6 +139,7 @@ LeaveRequest.belongsTo(User, {
   foreignKey: "approvedBy",
   as: "approver",
 });
+
 User.hasMany(LeaveRequest, {
   foreignKey: "approvedBy",
   as: "approvedLeaves",
