@@ -16,7 +16,7 @@ const AdvanceSalary = sequelize.define(
             type: Sequelize.INTEGER,
             allowNull: false,
             references: {
-                model: "UserRole",
+                model: "UserRoles",
                 key: "id",
             },
             onDelete: "CASCADE",
@@ -39,7 +39,7 @@ const AdvanceSalary = sequelize.define(
             type: Sequelize.INTEGER,
             allowNull: true, // Can be null if status is PENDING
             references: {
-                model: "User",
+                model: "Users",
                 key: "id",
             },
         },
