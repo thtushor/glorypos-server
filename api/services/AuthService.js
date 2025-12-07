@@ -6,8 +6,7 @@ const { Op } = require('sequelize');
 
 const AuthService = {
     async register(userData) {
-        try {
-            const hashedPassword = await bcrypt.hash(userData.password, 10);
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
 
             if (userData.accountType === "super admin") {
                 const isExistSuperAdmin = await User.findOne({
@@ -41,9 +40,6 @@ const AuthService = {
 
 
             return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
-        } catch (error) {
-            return { status: false, message: "Failed to register user", data: null, error };
-        }
     },
 
     async registerSuperAdmin(userData) {
