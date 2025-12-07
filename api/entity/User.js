@@ -102,6 +102,11 @@ const User = sequelize.define(
             defaultValue: 0,
             comment: "Commission percentage for staff users",
         },
+        shopType: {
+            type: Sequelize.ENUM("normal", "restaurant"),
+            allowNull: true,
+            comment: "Type of shop (normal or restaurant)",
+        },
 
     }
 );
