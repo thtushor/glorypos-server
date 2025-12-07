@@ -14,6 +14,10 @@ const Attendance = sequelize.define(
       type: Sequelize.ENUM("present", "absent"),
       allowNull: false,
     },
+    absentType: {
+      type: Sequelize.ENUM("paid", "unpaid"),
+      allowNull: true, // Only applicable if type is 'absent'
+    },
     lateMinutes: { type: Sequelize.INTEGER, defaultValue: 0 },
     extraMinutes: { type: Sequelize.INTEGER, defaultValue: 0 },
     isHalfDay: { type: Sequelize.BOOLEAN, defaultValue: false },
@@ -27,6 +31,7 @@ const Attendance = sequelize.define(
     indexes: [
       { unique: true, fields: ["userId", "date"] },
       { fields: ["type"] },
+      { fields: ["absentType"] }, // Add index for absentType
     ],
   }
 );

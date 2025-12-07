@@ -933,7 +933,7 @@ const PayrollService = {
       }
 
 
-// fetch all the employeeh from UserRole table by adminId
+      // fetch all the employeeh from UserRole table by adminId
       const users = await UserRole.findAll({
         where: { parentUserId: adminId },
         transaction,
@@ -941,21 +941,29 @@ const PayrollService = {
 
       for (const user of users) {
         // check any advance salery on this month or not calculate total advance salery from Advance salery month from @api\entity\AdvanceSalary.js .
-        const totalAdvanceSaleryByUser  = 0;
+        const totalAdvanceSaleryByUser = 0;
 
-        // calcualte total commissionByUser from @api\entity\StuffCommission.js
+        // calcualte total commissionByUser from @api\entity\StuffCommission.js by UserId calculate total commission on that month.
         const totalCommissionsByUser = 0;
-
+        // current salery
         const totalSaleryThisMonth = user.baseSalary;
 
+        // total non paid absent
         const totalAbsent = 0;
+        // deduct nonpaid absent by total day of the month count it as 30 days on its one day base salery deduct the amount non paid leave here
+        const deductNonPaidAbsent = 0
+
+        // check they have any remaining loan available or not.
+        const deductLoanAmount = 0;
+
+        //calculate total netpayable amoutn and insert to the api\entity\PayrollRelease.js entity for this employee pls adjust it.
       }
 
-    
+
 
     }
     catch (error) {
-      console.log({error})
+      console.log({ error })
     }
 
   },

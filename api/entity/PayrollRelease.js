@@ -82,6 +82,14 @@ const PayrollRelease = sequelize.define(
       validate: { min: 0 },
     },
 
+    // ✅ commissionAmount (Optional but useful)
+    commissionAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      validate: { min: 0 },
+    },
+
     // ✅ Other Deductions
     otherDeduction: {
       type: Sequelize.DECIMAL(12, 2),
