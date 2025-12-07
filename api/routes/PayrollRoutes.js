@@ -203,6 +203,19 @@ router.put(
   })
 );
 
+// Release a specific payroll
+router.post(
+  "/payroll/release",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.releasePayroll(
+      req.user.id
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
 // Get full payroll release history (admin view)
 router.get(
   "/payroll/history",

@@ -857,7 +857,7 @@ const PayrollService = {
     const transaction = await sequelize.transaction();
     try {
       const payrollRelease = await PayrollRelease.findOne({
-        where: { id: payrollReleaseId },
+        where: {  id: payrollReleaseId, shopId: adminId },
         transaction,
       });
 

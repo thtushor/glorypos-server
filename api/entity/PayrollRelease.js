@@ -120,6 +120,11 @@ const PayrollRelease = sequelize.define(
       },
     },
 
+    shopId: {
+      type: Sequelize.INTEGER,
+      allowNull: false,
+    },
+
     // ✅ Full Calculation Snapshot (Attendance, overtime, days, etc.)
     calculationSnapshot: {
       type: Sequelize.JSON,
