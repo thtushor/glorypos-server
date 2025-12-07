@@ -175,41 +175,15 @@ router.post(
   })
 );
 
-// Generate monthly payroll for an employee
-router.post(
-  "/payroll/generate",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.generateMonthlyPayroll(
-      req.user.id,
-      req.body
-    );
-    res.status(result.status ? 201 : 400).json(result);
-  })
-);
 
-// Release a specific payroll
-router.put(
-  "/payroll/release/:id",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releasePayroll(
-      req.user.id,
-      req.params.id
-    );
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
 
-// Release a specific payroll
+// Release full payroll
 router.post(
   "/payroll/release",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releasePayroll(
+    const result = await PayrollService.releasePayrollForAllEmployeeByMonth(
       req.user.id
     );
     res.status(result.status ? 200 : 400).json(result);

@@ -916,56 +916,204 @@ const PayrollService = {
 
   // \u2705 Salary Release API for whole month newly payrol where each month payrloal should be once for each employee.
   //check 1st salery generate or not if generate already then throw error salery alredy generated otherwise generate all the employee payrlol from UserRole table.
-  async releasePayrollForAllEmployeeByMonth(adminId, salaryMonth) {
 
+  async releasePayrollForAllEmployeeByMonth(adminId, salaryMonth) {
     const transaction = await sequelize.transaction();
 
     try {
-
-      // check first salary generate or not by this month and adminId
+      // Step 1: Check if payroll already generated for this month
       const existingPayrolls = await PayrollRelease.findAll({
         where: { salaryMonth, shopId: adminId },
         transaction,
       });
 
       if (existingPayrolls.length > 0) {
+        await transaction.rollback();
         throw new Error("Payroll already generated for this month.");
       }
 
-
-      // fetch all the employeeh from UserRole table by adminId
+      // Step 2: Fetch all employees from UserRole table
       const users = await UserRole.findAll({
         where: { parentUserId: adminId },
         transaction,
       });
 
-      for (const user of users) {
-        // check any advance salery on this month or not calculate total advance salery from Advance salery month from @api\entity\AdvanceSalary.js .
-        const totalAdvanceSaleryByUser = 0;
-
-        // calcualte total commissionByUser from @api\entity\StuffCommission.js by UserId calculate total commission on that month.
-        const totalCommissionsByUser = 0;
-        // current salery
-        const totalSaleryThisMonth = user.baseSalary;
-
-        // total non paid absent
-        const totalAbsent = 0;
-        // deduct nonpaid absent by total day of the month count it as 30 days on its one day base salery deduct the amount non paid leave here
-        const deductNonPaidAbsent = 0
-
-        // check they have any remaining loan available or not.
-        const deductLoanAmount = 0;
-
-        //calculate total netpayable amoutn and insert to the api\entity\PayrollRelease.js entity for this employee pls adjust it.
+      if (users.length === 0) {
+        await transaction.rollback();
+        throw new Error("No employees found for this admin.");
       }
 
+      // Get the start and end dates for the salary month
+      const [year, month] = salaryMonth.split("-");
+      const startDate = new Date(`${year}-${month}-01`);
+      const endDate = new Date(year, month, 0); // Last day of month
+      const totalDaysInMonth = endDate.getDate();
 
+      const payrollRecords = [];
 
+      // Step 3: Process each employee
+      for (const user of users) {
+        // Calculate 1: Total Advance Salary
+        const advanceSalaries = await AdvanceSalary.findAll({
+          where: {
+            userId: user.id,
+            salaryMonth: salaryMonth,
+            status: "APPROVED",
+          },
+          transaction,
+        });
+        const totalAdvanceSalaryByUser = advanceSalaries.reduce(
+          (sum, adv) => sum + parseFloat(adv.amount),
+          0
+        );
+
+        // Calculate 2: Total Commission
+        const commissions = await StuffCommission.findAll({
+          where: {
+            userId: user.id,
+            createdAt: {
+              [Op.between]: [startDate, endDate],
+            },
+          },
+          transaction,
+        });
+        const totalCommissionsByUser = commissions.reduce(
+          (sum, comm) => sum + parseFloat(comm.commissionAmount),
+          0
+        );
+
+        // Calculate 3: Attendance & Unpaid Absents
+        const attendanceRecords = await Attendance.findAll({
+          where: {
+            userId: user.id,
+            date: {
+              [Op.between]: [startDate, endDate],
+            },
+          },
+          transaction,
+        });
+
+        // Count unpaid absents
+        const unpaidAbsents = attendanceRecords.filter(
+          (att) => att.type === "absent" && att.absentType === "unpaid"
+        ).length;
+
+        // Calculate half-days (counts as 0.5 absent)
+        const halfDays = attendanceRecords.filter(
+          (att) => att.isHalfDay === true
+        ).length;
+
+        const totalAbsent = unpaidAbsents + halfDays * 0.5;
+
+        // Deduct unpaid absents from salary
+        const perDaySalary = parseFloat(user.baseSalary) / totalDaysInMonth;
+        const deductNonPaidAbsent = perDaySalary * totalAbsent;
+
+        // Calculate 4: Loan Deduction
+        const activeLoans = await EmployeeLoan.findAll({
+          where: {
+            employeeId: user.id,
+            status: "APPROVED",
+            remainingAmount: {
+              [Op.gt]: 0,
+            },
+          },
+          transaction,
+        });
+
+        let deductLoanAmount = 0;
+        for (const loan of activeLoans) {
+          const installmentAmount = parseFloat(loan.monthlyInstallment) || 0;
+          const remaining = parseFloat(loan.remainingAmount) || 0;
+
+          // Deduct installment or remaining amount (whichever is smaller)
+          const deduction = Math.min(installmentAmount, remaining);
+          deductLoanAmount += deduction;
+
+          // Record the loan payment
+          await LoanPayment.create(
+            {
+              loanId: loan.id,
+              employeeId: user.id,
+              paidAmount: deduction,
+              paymentDate: new Date(),
+              paidBy: adminId,
+            },
+            { transaction }
+          );
+
+          // Update loan remaining amount
+          loan.remainingAmount = remaining - deduction;
+          if (loan.remainingAmount <= 0) {
+            loan.status = "PAID";
+            loan.remainingAmount = 0;
+          }
+          await loan.save({ transaction });
+        }
+
+        // Calculate 5: Net Payable Salary
+        const baseSalary = parseFloat(user.baseSalary);
+        const netPayableSalary =
+          baseSalary +
+          totalCommissionsByUser -
+          totalAdvanceSalaryByUser -
+          deductNonPaidAbsent -
+          deductLoanAmount;
+
+        // Prepare calculation snapshot
+        const calculationSnapshot = {
+          baseSalary,
+          totalDaysInMonth,
+          unpaidAbsents,
+          halfDays,
+          totalAbsentDays: totalAbsent,
+          perDaySalary: perDaySalary.toFixed(2),
+          deductNonPaidAbsent: deductNonPaidAbsent.toFixed(2),
+          advanceCount: advanceSalaries.length,
+          commissionCount: commissions.length,
+          activeLoanCount: activeLoans.length,
+        };
+
+        // Create payroll record
+        const payrollData = {
+          userId: user.id,
+          salaryMonth,
+          baseSalary,
+          advanceAmount: totalAdvanceSalaryByUser,
+          bonusAmount: 0, // Can be added later manually
+          loanDeduction: deductLoanAmount,
+          fineAmount: 0, // Can be added later manually
+          overtimeAmount: 0, // Can be added if needed
+          commissionAmount: totalCommissionsByUser,
+          otherDeduction: deductNonPaidAbsent,
+          netPayableSalary: Math.max(0, netPayableSalary), // Ensure non-negative
+          status: "PENDING",
+          releaseDate: null,
+          releasedBy: null,
+          shopId: adminId,
+          calculationSnapshot,
+        };
+
+        payrollRecords.push(payrollData);
+      }
+
+      // Step 4: Bulk insert all payroll records
+      await PayrollRelease.bulkCreate(payrollRecords, { transaction });
+
+      // Commit transaction
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: `Payroll generated for ${payrollRecords.length} employees for ${salaryMonth}`,
+        totalEmployees: payrollRecords.length,
+        data: payrollRecords,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      console.error("Payroll generation error:", error);
+      throw error;
     }
-    catch (error) {
-      console.log({ error })
-    }
-
   },
 
   // NEW: Full release history (admin view)
