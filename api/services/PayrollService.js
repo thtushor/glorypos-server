@@ -857,7 +857,7 @@ const PayrollService = {
     const transaction = await sequelize.transaction();
     try {
       const payrollRelease = await PayrollRelease.findOne({
-        where: {  id: payrollReleaseId, shopId: adminId },
+        where: { id: payrollReleaseId, shopId: adminId },
         transaction,
       });
 
@@ -912,6 +912,52 @@ const PayrollService = {
       await transaction.rollback();
       return { status: false, message: error.message };
     }
+  },
+
+  // \u2705 Salary Release API for whole month newly payrol where each month payrloal should be once for each employee.
+  //check 1st salery generate or not if generate already then throw error salery alredy generated otherwise generate all the employee payrlol from UserRole table.
+  async releasePayrollForAllEmployeeByMonth(adminId, salaryMonth) {
+
+    const transaction = await sequelize.transaction();
+
+    try {
+
+      // check first salary generate or not by this month and adminId
+      const existingPayrolls = await PayrollRelease.findAll({
+        where: { salaryMonth, shopId: adminId },
+        transaction,
+      });
+
+      if (existingPayrolls.length > 0) {
+        throw new Error("Payroll already generated for this month.");
+      }
+
+
+// fetch all the employeeh from UserRole table by adminId
+      const users = await UserRole.findAll({
+        where: { parentUserId: adminId },
+        transaction,
+      });
+
+      for (const user of users) {
+        // check any advance salery on this month or not calculate total advance salery from Advance salery month from @api\entity\AdvanceSalary.js .
+        const totalAdvanceSaleryByUser  = 0;
+
+        // calcualte total commissionByUser from @api\entity\StuffCommission.js
+        const totalCommissionsByUser = 0;
+
+        const totalSaleryThisMonth = user.baseSalary;
+
+        const totalAbsent = 0;
+      }
+
+    
+
+    }
+    catch (error) {
+      console.log({error})
+    }
+
   },
 
   // NEW: Full release history (admin view)
