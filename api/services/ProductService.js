@@ -3,8 +3,7 @@ const { Op } = require('sequelize');
 
 const ProductService = {
     async create(productData, userId) {
-        try {
-            // Handle images array: set first image to productImage and store all in images column
+        // Handle images array: set first image to productImage and store all in images column
             const processedData = { ...productData };
 
             if (productData.images && Array.isArray(productData.images) && productData.images.length > 0) {
@@ -24,9 +23,6 @@ const ProductService = {
                 UserId: userId
             });
             return { status: true, message: "Product created successfully", data: product };
-        } catch (error) {
-            return { status: false, message: "Failed to create product", data: null, error };
-        }
     },
 
     async getAll(query = {}, accessibleShopIds) {
@@ -233,8 +229,7 @@ const ProductService = {
     },
 
     async update(id, updateData, accessibleShopIds) {
-        try {
-            const product = await Product.findOne({
+         const product = await Product.findOne({
                 where: {
                     id: id,
                     UserId: { [Op.in]: accessibleShopIds }
@@ -270,9 +265,6 @@ const ProductService = {
 
             await product.update(processedData);
             return { status: true, message: "Product updated successfully", data: product };
-        } catch (error) {
-            return { status: false, message: "Failed to update product", data: null, error };
-        }
     },
 
     async delete(id, accessibleShopIds) {
