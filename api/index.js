@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 const path = require("path");
+const cookiesParser = require("cookie-parser");
 const authRoutes = require("./routes/authRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const requestHandler = require("./utils/requestHandler");
@@ -30,6 +31,8 @@ const port = process.env.SERVER_PORT || 3000;
 const SchedulerService = require("./services/SchedulerService");
 app.use(cors());
 app.use(express.json());
+app.use(cookiesParser());
+
 
 app.use(express.static("public"));
 
@@ -56,7 +59,7 @@ app.use("/api/commissions", requestHandler(null, stuffCommissionRoutes));
 app.use("/api/loan", requestHandler(null, loanRoutes));
 
 app.get("/", function (req, res) {
-  res.send("welcome pos solution family!");
+  res.send("welcome to glorypos family!");
 });
 
 // app.use(ErrorHandler)

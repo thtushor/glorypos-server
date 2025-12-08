@@ -23,7 +23,10 @@ router.post('/login', requestHandler(null, async (req, res) => {
 
 router.get('/profile', AuthService.authenticate, requestHandler(null, async (req, res) => {
     const email = req.query.email;
-    const result = await AuthService.getProfile(email);
+    console.log({request: req.cookies});
+     // Cookies that have been signed
+  console.log('Signed Cookies: ', req.signedCookies)
+    const result = await AuthService.getProfile(email,);
     res.status(200).json(result);
 }));
 
