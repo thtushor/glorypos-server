@@ -106,6 +106,7 @@ const User = sequelize.define(
             type: Sequelize.ENUM("normal", "restaurant"),
             allowNull: true,
             comment: "Type of shop (normal or restaurant)",
+            defaultValue: "normal"
         },
 
     }

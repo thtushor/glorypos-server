@@ -42,7 +42,11 @@ const OrderService = {
             // Calculate tax and total
             const tableNumber = orderData?.tableNumber || null;
             const guestNumber = orderData?.guestNumber || null;
-        
+            const specialNotes = orderData?.specialNotes || null;
+
+            // const paymentStatus = orderData.paymentStatus;
+            const kotPaymentStatus = orderData.kotPaymentStatus;
+
             const tax = orderData?.tax || 0;
             const discount = orderData?.discount || 0;
             const total = subtotal + tax - discount;
@@ -77,12 +81,17 @@ const OrderService = {
                 }
             }
 
+            paymentStatus = kotPaymentStatus === "pending" ? "pending" : paymentStatus
+
             // Generate unique order number
             const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
             // Create order
             const order = await Order.create({
                 ...orderData,
+                tableNumber,
+                guestNumber,
+                specialNotes,
                 orderNumber,
                 UserId: userId,
                 orderDate: new Date(),
