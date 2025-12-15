@@ -1,6 +1,6 @@
 const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, User, StuffCommission, UserRole } = require('../entity');
 const sequelize = require('../db');
-const { Op } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
 const StuffCommissionService = require('./StuffCommissionService');
 
 const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
@@ -1020,6 +1020,428 @@ const OrderService = {
                 status: false,
                 message: error.isClientError ? error.message : "Failed to retrieve top customers",
                 error: error.message
+            };
+        }
+    },
+
+    /**
+     * Comprehensive Sales & Inventory dashboard
+     *
+     * Supports filters:
+     * - shopId (mapped via UserId / accessibleShopIds)
+     * - productSearch (name / sku)
+     * - variantSearch (variant sku)
+     * - categoryId, brandId, modelNo, colorId, unitId
+     * - startDate, endDate (start of day / end of day)
+     */
+    async getSalesInventoryDashboard(accessibleShopIds, query = {}) {
+        try {
+            const {
+                shopId,
+                productSearch,
+                variantSearch,
+                categoryId,
+                brandId,
+                modelNo,
+                colorId,
+                unitId,
+                startDate,
+                endDate,
+                page = 1,
+                pageSize = 20,
+            } = query;
+
+            const targetShopIds = resolveShopFilter(accessibleShopIds, shopId);
+
+            // --- Date range (start of day / end of day) ---
+            let start = startDate ? new Date(startDate) : new Date();
+            let end = endDate ? new Date(endDate) : new Date();
+
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+
+            // --- Shared where clauses ---
+            const orderWhere = {
+                UserId: { [Op.in]: targetShopIds },
+                orderStatus: "completed",
+                orderDate: {
+                    [Op.between]: [start, end],
+                },
+            };
+
+            const productWhere = {
+                UserId: { [Op.in]: targetShopIds },
+                status: "active",
+            };
+
+            if (categoryId) {
+                const id = Number(categoryId);
+                if (!Number.isNaN(id)) {
+                    productWhere.CategoryId = id;
+                }
+            }
+
+            if (brandId) {
+                const id = Number(brandId);
+                if (!Number.isNaN(id)) {
+                    productWhere.BrandId = id;
+                }
+            }
+
+            if (unitId) {
+                const id = Number(unitId);
+                if (!Number.isNaN(id)) {
+                    productWhere.UnitId = id;
+                }
+            }
+
+            if (modelNo) {
+                productWhere.modelNo = modelNo;
+            }
+
+            if (productSearch) {
+                productWhere[Op.or] = [
+                    { name: { [Op.like]: `%${productSearch}%` } },
+                    { sku: { [Op.like]: `%${productSearch}%` } },
+                ];
+            }
+
+            const variantWhere = {};
+
+            if (colorId) {
+                const id = Number(colorId);
+                if (!Number.isNaN(id)) {
+                    variantWhere.ColorId = id;
+                }
+            }
+
+            if (variantSearch) {
+                variantWhere[Op.or] = [
+                    { sku: { [Op.like]: `%${variantSearch}%` } },
+                ];
+            }
+
+            // --- KPIs: today (or date range) sales ---
+            const kpiRow = await OrderItem.findOne({
+                attributes: [
+                    [fn("SUM", col("OrderItem.quantity")), "itemsSold"],
+                    [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
+                    [
+                        fn(
+                            "COUNT",
+                            fn("DISTINCT", col("Order.id"))
+                        ),
+                        "orders",
+                    ],
+                ],
+                include: [
+                    {
+                        model: Order,
+                        attributes: [],
+                        where: orderWhere,
+                    },
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                        required: Object.keys(productWhere).length > 0,
+                    },
+                    {
+                        model: ProductVariant,
+                        attributes: [],
+                        where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                        required: Object.keys(variantWhere).length > 0,
+                    },
+                ],
+                raw: true,
+            });
+
+            const todayItemsSold = Number(kpiRow?.itemsSold || 0);
+            const todaySalesAmount = Number(kpiRow?.salesAmount || 0);
+            const todayOrders = Number(kpiRow?.orders || 0);
+
+            // --- Current stock (product + variant) ---
+            const productStockAgg = await Product.findAll({
+                attributes: [
+                    [fn("SUM", col("stock")), "totalStock"],
+                    [fn("COUNT", col("id")), "productsCount"],
+                    [fn("COUNT", fn("DISTINCT", col("CategoryId"))), "categoriesCount"],
+                ],
+                where: productWhere,
+                raw: true,
+            });
+
+            const variantStockAgg = await ProductVariant.findAll({
+                attributes: [[fn("SUM", col("quantity")), "totalVariantStock"]],
+                include: [
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+                where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                raw: true,
+            });
+
+            const currentStockProducts = Number(productStockAgg?.[0]?.totalStock || 0);
+            const currentStockVariants = Number(variantStockAgg?.[0]?.totalVariantStock || 0);
+            const totalCurrentStock = currentStockProducts + currentStockVariants;
+
+            // Low stock & out of stock based on alertQuantity / quantity
+            const lowStockProducts = await Product.count({
+                where: {
+                    ...productWhere,
+                    stock: {
+                        [Op.gt]: 0,
+                        [Op.lte]: col("alertQuantity"),
+                    },
+                },
+            });
+
+            const outOfStockProducts = await Product.count({
+                where: {
+                    ...productWhere,
+                    stock: 0,
+                },
+            });
+
+            const lowStockVariants = await ProductVariant.count({
+                where: {
+                    ...variantWhere,
+                    quantity: {
+                        [Op.gt]: 0,
+                        [Op.lte]: col("ProductVariant.alertQuantity"),
+                    },
+                },
+                include: [
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+            });
+
+            const outOfStockVariants = await ProductVariant.count({
+                where: {
+                    ...variantWhere,
+                    quantity: 0,
+                },
+                include: [
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+            });
+
+            // --- Product-level sales & stock ---
+            const salesByProduct = await OrderItem.findAll({
+                attributes: [
+                    "ProductId",
+                    [fn("SUM", col("OrderItem.quantity")), "salesQty"],
+                    [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
+                ],
+                include: [
+                    {
+                        model: Order,
+                        attributes: [],
+                        where: orderWhere,
+                    },
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+                group: ["ProductId"],
+                raw: true,
+            });
+
+            const stockByProduct = await Product.findAll({
+                attributes: [
+                    "id",
+                    "name",
+                    "sku",
+                    "CategoryId",
+                    "BrandId",
+                    "modelNo",
+                    "stock",
+                ],
+                where: productWhere,
+                raw: true,
+            });
+
+            const salesByProductMap = salesByProduct.reduce((acc, row) => {
+                acc[row.ProductId] = {
+                    salesQty: Number(row.salesQty || 0),
+                    salesAmount: Number(row.salesAmount || 0),
+                };
+                return acc;
+            }, {});
+
+            const productRows = stockByProduct.map((p) => {
+                const sales = salesByProductMap[p.id] || {
+                    salesQty: 0,
+                    salesAmount: 0,
+                };
+                return {
+                    productId: p.id,
+                    name: p.name,
+                    sku: p.sku,
+                    categoryId: p.CategoryId,
+                    brandId: p.BrandId,
+                    modelNo: p.modelNo,
+                    stockQty: Number(p.stock || 0),
+                    salesQty: sales.salesQty,
+                    salesAmount: sales.salesAmount,
+                };
+            });
+
+            const productTotal = productRows.length;
+            const productOffset = (Number(page) - 1) * Number(pageSize);
+            const productPaginated = productRows.slice(
+                productOffset,
+                productOffset + Number(pageSize)
+            );
+
+            // --- Variant-level sales & stock ---
+            const salesByVariant = await OrderItem.findAll({
+                attributes: [
+                    "ProductVariantId",
+                    [fn("SUM", col("OrderItem.quantity")), "salesQty"],
+                    [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
+                ],
+                include: [
+                    {
+                        model: Order,
+                        attributes: [],
+                        where: orderWhere,
+                    },
+                    {
+                        model: ProductVariant,
+                        attributes: [],
+                        where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                    },
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+                group: ["ProductVariantId"],
+                raw: true,
+            });
+
+            const stockByVariant = await ProductVariant.findAll({
+                attributes: ["id", "sku", "quantity", "ColorId", "SizeId"],
+                include: [
+                    {
+                        model: Product,
+                        attributes: ["id", "name"],
+                        where: productWhere,
+                    },
+                    {
+                        model: Color,
+                        attributes: ["name"],
+                        required: false,
+                    },
+                    {
+                        model: Size,
+                        attributes: ["name"],
+                        required: false,
+                    },
+                ],
+            });
+
+            const salesByVariantMap = salesByVariant.reduce((acc, row) => {
+                acc[row.ProductVariantId] = {
+                    salesQty: Number(row.salesQty || 0),
+                    salesAmount: Number(row.salesAmount || 0),
+                };
+                return acc;
+            }, {});
+
+            const variantRows = stockByVariant.map((v) => {
+                const sales = salesByVariantMap[v.id] || {
+                    salesQty: 0,
+                    salesAmount: 0,
+                };
+
+                let stockStatus = "HEALTHY";
+                const alertQty = Number(v.alertQuantity || 0);
+                const qty = Number(v.quantity || 0);
+
+                if (qty === 0) {
+                    stockStatus = "OUT";
+                } else if (alertQty && qty <= alertQty) {
+                    stockStatus = "LOW";
+                }
+
+                return {
+                    variantId: v.id,
+                    sku: v.sku,
+                    productId: v.Product?.id,
+                    productName: v.Product?.name,
+                    colorName: v.Color?.name || null,
+                    sizeName: v.Size?.name || null,
+                    stockQty: qty,
+                    salesQty: sales.salesQty,
+                    salesAmount: sales.salesAmount,
+                    stockStatus,
+                };
+            });
+
+            // We don't paginate variants here – frontend can if needed
+
+            return {
+                status: true,
+                message: "Sales & inventory dashboard generated successfully",
+                data: {
+                    filtersUsed: {
+                        shopId,
+                        startDate: start,
+                        endDate: end,
+                        productSearch: productSearch || null,
+                        variantSearch: variantSearch || null,
+                        categoryId: categoryId || null,
+                        brandId: brandId || null,
+                        modelNo: modelNo || null,
+                        colorId: colorId || null,
+                        unitId: unitId || null,
+                    },
+                    kpis: {
+                        todaySalesAmount,
+                        todayItemsSold,
+                        todayOrders,
+                        currentStock: totalCurrentStock,
+                        lowStockCount: lowStockProducts + lowStockVariants,
+                        outOfStockCount: outOfStockProducts + outOfStockVariants,
+                        totalProducts: Number(productStockAgg?.[0]?.productsCount || 0),
+                        totalCategories: Number(productStockAgg?.[0]?.categoriesCount || 0),
+                    },
+                    productView: {
+                        page: Number(page),
+                        pageSize: Number(pageSize),
+                        total: productTotal,
+                        rows: productPaginated,
+                    },
+                    variantView: {
+                        total: variantRows.length,
+                        rows: variantRows,
+                    },
+                },
+            };
+        } catch (error) {
+            console.error("getSalesInventoryDashboard error:", error);
+            return {
+                status: false,
+                message: error.isClientError
+                    ? error.message
+                    : "Failed to generate sales & inventory dashboard",
+                error: error.message,
             };
         }
     },

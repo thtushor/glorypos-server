@@ -60,4 +60,10 @@ router.get('/report/chart/sales', AuthService.authenticate, addShopAccess, reque
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+// Sales & Inventory intelligence dashboard
+router.get('/report/sales-inventory', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await OrderService.getSalesInventoryDashboard(req.accessibleShopIds, req.query);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
 module.exports = router;
