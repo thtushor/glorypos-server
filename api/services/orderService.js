@@ -1,4 +1,17 @@
-const { Order, OrderItem, Product, ProductVariant, StockHistory, Color, Size, User, StuffCommission, UserRole } = require('../entity');
+const {
+    Order,
+    OrderItem,
+    Product,
+    ProductVariant,
+    StockHistory,
+    Color,
+    Size,
+    User,
+    StuffCommission,
+    UserRole,
+    Category,
+    Brand,
+} = require('../entity');
 const sequelize = require('../db');
 const { Op, fn, col, literal } = require('sequelize');
 const StuffCommissionService = require('./StuffCommissionService');
@@ -1047,8 +1060,6 @@ const OrderService = {
                 unitId,
                 startDate,
                 endDate,
-                page = 1,
-                pageSize = 20,
             } = query;
 
             const targetShopIds = resolveShopFilter(accessibleShopIds, shopId);
@@ -1160,35 +1171,51 @@ const OrderService = {
             const todaySalesAmount = Number(kpiRow?.salesAmount || 0);
             const todayOrders = Number(kpiRow?.orders || 0);
 
-            // --- Current stock (product + variant) ---
-            const productStockAgg = await Product.findAll({
+            // --- Date-wise sales / order count within range ---
+            const dailyAgg = await OrderItem.findAll({
                 attributes: [
-                    [fn("SUM", col("stock")), "totalStock"],
-                    [fn("COUNT", col("id")), "productsCount"],
-                    [fn("COUNT", fn("DISTINCT", col("CategoryId"))), "categoriesCount"],
+                    [fn("DATE", col("Order.orderDate")), "date"],
+                    [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
+                    [fn("SUM", col("OrderItem.quantity")), "itemsSold"],
+                    [
+                        fn(
+                            "COUNT",
+                            fn("DISTINCT", col("Order.id"))
+                        ),
+                        "orders",
+                    ],
                 ],
-                where: productWhere,
-                raw: true,
-            });
-
-            const variantStockAgg = await ProductVariant.findAll({
-                attributes: [[fn("SUM", col("quantity")), "totalVariantStock"]],
                 include: [
+                    {
+                        model: Order,
+                        attributes: [],
+                        where: orderWhere,
+                    },
                     {
                         model: Product,
                         attributes: [],
                         where: productWhere,
                     },
+                    {
+                        model: ProductVariant,
+                        attributes: [],
+                        where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                        required: Object.keys(variantWhere).length > 0,
+                    },
                 ],
-                where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                group: [fn("DATE", col("Order.orderDate"))],
+                order: [[fn("DATE", col("Order.orderDate")), "ASC"]],
                 raw: true,
             });
 
-            const currentStockProducts = Number(productStockAgg?.[0]?.totalStock || 0);
-            const currentStockVariants = Number(variantStockAgg?.[0]?.totalVariantStock || 0);
-            const totalCurrentStock = currentStockProducts + currentStockVariants;
+            const timeSeriesByDate = dailyAgg.map((row) => ({
+                date: row.date,
+                salesAmount: Number(row.salesAmount || 0),
+                itemsSold: Number(row.itemsSold || 0),
+                orders: Number(row.orders || 0),
+            }));
 
-            // Low stock & out of stock based on alertQuantity / quantity
+            // --- Low stock & out of stock based on alertQuantity / quantity ---
             const lowStockProducts = await Product.count({
                 where: {
                     ...productWhere,
@@ -1271,6 +1298,36 @@ const OrderService = {
                     "stock",
                 ],
                 where: productWhere,
+                include: [
+                    {
+                        model: Category,
+                        attributes: ["id", "name"],
+                        required: false,
+                    },
+                    {
+                        model: Brand,
+                        attributes: ["id", "name"],
+                        required: false,
+                    },
+                ],
+                raw: true,
+            });
+
+            // Variant stock aggregated per product (for products that have variants)
+            const variantStockByProduct = await ProductVariant.findAll({
+                attributes: [
+                    "ProductId",
+                    [fn("SUM", col("quantity")), "variantStockQty"],
+                ],
+                include: [
+                    {
+                        model: Product,
+                        attributes: [],
+                        where: productWhere,
+                    },
+                ],
+                where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                group: ["ProductId"],
                 raw: true,
             });
 
@@ -1282,30 +1339,10 @@ const OrderService = {
                 return acc;
             }, {});
 
-            const productRows = stockByProduct.map((p) => {
-                const sales = salesByProductMap[p.id] || {
-                    salesQty: 0,
-                    salesAmount: 0,
-                };
-                return {
-                    productId: p.id,
-                    name: p.name,
-                    sku: p.sku,
-                    categoryId: p.CategoryId,
-                    brandId: p.BrandId,
-                    modelNo: p.modelNo,
-                    stockQty: Number(p.stock || 0),
-                    salesQty: sales.salesQty,
-                    salesAmount: sales.salesAmount,
-                };
-            });
-
-            const productTotal = productRows.length;
-            const productOffset = (Number(page) - 1) * Number(pageSize);
-            const productPaginated = productRows.slice(
-                productOffset,
-                productOffset + Number(pageSize)
-            );
+            const variantStockMap = variantStockByProduct.reduce((acc, row) => {
+                acc[row.ProductId] = Number(row.variantStockQty || 0);
+                return acc;
+            }, {});
 
             // --- Variant-level sales & stock ---
             const salesByVariant = await OrderItem.findAll({
@@ -1394,7 +1431,124 @@ const OrderService = {
                 };
             });
 
-            // We don't paginate variants here – frontend can if needed
+            // Index variants by productId for embedding into product view
+            const variantsByProductId = variantRows.reduce((acc, v) => {
+                if (!v.productId) return acc;
+                if (!acc[v.productId]) acc[v.productId] = [];
+                acc[v.productId].push(v);
+                return acc;
+            }, {});
+
+            // Build normalized product rows, embedding variants
+            const productRows = stockByProduct.map((p) => {
+                const categoryId = p.CategoryId || p["Category.id"] || null;
+                const brandId = p.BrandId || p["Brand.id"] || null;
+                const categoryName = p["Category.name"] || null;
+                const brandName = p["Brand.name"] || null;
+
+                // If product has variants (in current filter), use variant stock as the source of truth.
+                // Otherwise, fall back to parent product stock.
+                const variantStockQty = variantStockMap[p.id];
+                const effectiveStock =
+                    typeof variantStockQty === "number" && !Number.isNaN(variantStockQty)
+                        ? variantStockQty
+                        : Number(p.stock || 0);
+
+                const sales = salesByProductMap[p.id] || {
+                    salesQty: 0,
+                    salesAmount: 0,
+                };
+
+                const variants = variantsByProductId[p.id] || [];
+
+                return {
+                    productId: p.id,
+                    name: p.name,
+                    sku: p.sku,
+                    categoryId,
+                    categoryName,
+                    brandId,
+                    brandName,
+                    modelNo: p.modelNo,
+                    stockQty: effectiveStock,
+                    salesQty: sales.salesQty,
+                    salesAmount: sales.salesAmount,
+                    hasVariants: variants.length > 0,
+                    variants,
+                };
+            });
+
+            // Total stock now based on effective per-product stock
+            const totalCurrentStock = productRows.reduce(
+                (sum, p) => sum + Number(p.stockQty || 0),
+                0
+            );
+
+            // Aggregate views: category-wise, brand-wise, model-wise
+            const categoryViewMap = {};
+            const brandViewMap = {};
+            const modelViewMap = {};
+
+            productRows.forEach((p) => {
+                // Category-wise
+                if (p.categoryId) {
+                    if (!categoryViewMap[p.categoryId]) {
+                        categoryViewMap[p.categoryId] = {
+                            categoryId: p.categoryId,
+                            categoryName: p.categoryName || null,
+                            productsCount: 0,
+                            stockQty: 0,
+                            salesQty: 0,
+                            salesAmount: 0,
+                        };
+                    }
+                    const c = categoryViewMap[p.categoryId];
+                    c.productsCount += 1;
+                    c.stockQty += Number(p.stockQty || 0);
+                    c.salesQty += Number(p.salesQty || 0);
+                    c.salesAmount += Number(p.salesAmount || 0);
+                }
+
+                // Brand-wise
+                if (p.brandId) {
+                    if (!brandViewMap[p.brandId]) {
+                        brandViewMap[p.brandId] = {
+                            brandId: p.brandId,
+                            brandName: p.brandName || null,
+                            productsCount: 0,
+                            stockQty: 0,
+                            salesQty: 0,
+                            salesAmount: 0,
+                        };
+                    }
+                    const b = brandViewMap[p.brandId];
+                    b.productsCount += 1;
+                    b.stockQty += Number(p.stockQty || 0);
+                    b.salesQty += Number(p.salesQty || 0);
+                    b.salesAmount += Number(p.salesAmount || 0);
+                }
+
+                // Model-wise
+                if (p.modelNo) {
+                    if (!modelViewMap[p.modelNo]) {
+                        modelViewMap[p.modelNo] = {
+                            modelNo: p.modelNo,
+                            productsCount: 0,
+                            stockQty: 0,
+                            salesQty: 0,
+                            salesAmount: 0,
+                        };
+                    }
+                    const m = modelViewMap[p.modelNo];
+                    m.productsCount += 1;
+                    m.stockQty += Number(p.stockQty || 0);
+                    m.salesQty += Number(p.salesQty || 0);
+                    m.salesAmount += Number(p.salesAmount || 0);
+                }
+            });
+
+            const productTotal = productRows.length;
+            const variantTotal = variantRows.length;
 
             return {
                 status: true,
@@ -1419,18 +1573,32 @@ const OrderService = {
                         currentStock: totalCurrentStock,
                         lowStockCount: lowStockProducts + lowStockVariants,
                         outOfStockCount: outOfStockProducts + outOfStockVariants,
-                        totalProducts: Number(productStockAgg?.[0]?.productsCount || 0),
-                        totalCategories: Number(productStockAgg?.[0]?.categoriesCount || 0),
+                        totalProducts: productTotal,
+                        totalCategories: Object.keys(categoryViewMap).length,
+                        totalBrands: Object.keys(brandViewMap).length,
                     },
                     productView: {
-                        page: Number(page),
-                        pageSize: Number(pageSize),
                         total: productTotal,
-                        rows: productPaginated,
+                        rows: productRows,
                     },
                     variantView: {
-                        total: variantRows.length,
+                        total: variantTotal,
                         rows: variantRows,
+                    },
+                    timeSeries: {
+                        byDate: timeSeriesByDate,
+                    },
+                    categoryView: {
+                        totalCategories: Object.keys(categoryViewMap).length,
+                        rows: Object.values(categoryViewMap),
+                    },
+                    brandView: {
+                        totalBrands: Object.keys(brandViewMap).length,
+                        rows: Object.values(brandViewMap),
+                    },
+                    modelView: {
+                        totalModels: Object.keys(modelViewMap).length,
+                        rows: Object.values(modelViewMap),
                     },
                 },
             };
