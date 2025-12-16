@@ -98,10 +98,8 @@ const OrderService = {
 
             // Generate unique order number where it should be less 8 digits and it should be unique
             // const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
-            let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
-            while(await Order.findOne({ where: { orderNumber }, transaction })){
-                orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
-            }
+            let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`;
+            
 
             let order = null;
             if(orderId){
@@ -499,44 +497,130 @@ const OrderService = {
                 orderStatus: 'completed'
             };
 
-            // if (dateRange?.startDate && dateRange?.endDate) {
-            //     whereClause.orderDate = {
-            //         [Op.between]: [dateRange.startDate, dateRange.endDate]
-            //     };
-            // }
-
+            // Apply date range filter
             if (dateRange?.startDate && dateRange?.endDate) {
                 const start = new Date(dateRange.startDate);
-                start.setHours(0, 0, 0, 0); // start of day
+                start.setHours(0, 0, 0, 0);
 
                 const end = new Date(dateRange.endDate);
-                end.setHours(23, 59, 59, 999); // end of day
+                end.setHours(23, 59, 59, 999);
 
                 whereClause.orderDate = {
                     [Op.between]: [start, end]
                 };
             }
 
+            // Validate shopIds to prevent errors
+            if (!targetShopIds || targetShopIds.length === 0) {
+                return {
+                    status: true,
+                    message: "Dashboard statistics retrieved successfully",
+                    data: {
+                        totalSales: 0,
+                        totalOrders: 0,
+                        totalProfit: 0,
+                        totalLoss: 0,
+                        totalDiscount: 0,
+                        orderLevelDiscount: 0,
+                        itemLevelDiscount: 0,
+                        totalTax: 0,
+                        totalCommissions: 0,
+                        totalProducts: 0
+                    }
+                };
+            }
 
-            const orders = await Order.findAll({
-                where: whereClause,
-                include: [{
-                    model: OrderItem,
-                    include: [
-                        {
-                            model: Product,
-                            attributes: ['purchasePrice']
-                        }
-                    ]
-                }]
+            // Filter out any invalid IDs
+            const validShopIds = targetShopIds.filter(id => {
+                const numId = Number(id);
+                return !Number.isNaN(numId) && numId > 0;
             });
+
+            if (validShopIds.length === 0) {
+                return {
+                    status: true,
+                    message: "Dashboard statistics retrieved successfully",
+                    data: {
+                        totalSales: 0,
+                        totalOrders: 0,
+                        totalProfit: 0,
+                        totalLoss: 0,
+                        totalDiscount: 0,
+                        orderLevelDiscount: 0,
+                        itemLevelDiscount: 0,
+                        totalTax: 0,
+                        totalCommissions: 0,
+                        totalProducts: 0
+                    }
+                };
+            }
+
+            // Update whereClause with validated IDs
+            whereClause.UserId = { [Op.in]: validShopIds };
+
+            // Optimized: Use database aggregation for order-level stats
+            const orderStats = await Order.findOne({
+                where: whereClause,
+                attributes: [
+                    [fn('SUM', col('Order.total')), 'totalSales'],
+                    [fn('COUNT', col('Order.id')), 'totalOrders'],
+                    [fn('SUM', col('Order.discount')), 'orderLevelDiscount'],
+                    [fn('SUM', col('Order.tax')), 'totalTax']
+                ],
+                raw: true
+            });
+
+            // Optimized: Use database aggregation for order item stats
+            // Get table names and escape them properly for MySQL
+            const OrderTableName = Order.getTableName();
+            const OrderItemTableName = OrderItem.getTableName();
+            const ProductTableName = Product.getTableName();
+
+            // Build placeholders for IN clause to prevent SQL injection
+            const shopIdPlaceholders = validShopIds.map((_, idx) => `:shopId${idx}`).join(', ');
+            const queryParams = {};
+            validShopIds.forEach((id, idx) => {
+                queryParams[`shopId${idx}`] = Number(id);
+            });
+            
+            let dateCondition = '';
+            if (dateRange?.startDate && dateRange?.endDate) {
+                const start = new Date(dateRange.startDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(dateRange.endDate);
+                end.setHours(23, 59, 59, 999);
+                dateCondition = 'AND o.orderDate BETWEEN :startDate AND :endDate';
+                queryParams.startDate = start;
+                queryParams.endDate = end;
+            }
+
+            const itemStatsQuery = `
+                SELECT 
+                    COALESCE(SUM(oi.unitPrice * oi.quantity), 0) as totalRevenue,
+                    COALESCE(SUM(COALESCE(oi.purchasePrice, p.purchasePrice, 0) * oi.quantity), 0) as totalCost,
+                    COALESCE(SUM(COALESCE(oi.totalDiscount, oi.unitDiscount * oi.quantity, 0)), 0) as itemLevelDiscount
+                FROM \`${OrderItemTableName}\` oi
+                INNER JOIN \`${OrderTableName}\` o ON oi.OrderId = o.id
+                LEFT JOIN \`${ProductTableName}\` p ON oi.ProductId = p.id
+                WHERE o.UserId IN (${shopIdPlaceholders})
+                    AND o.orderStatus = 'completed'
+                    ${dateCondition}
+            `;
+
+            const [itemStatsResult] = await sequelize.query(itemStatsQuery, {
+                replacements: queryParams,
+                type: sequelize.QueryTypes.SELECT
+            });
+
+            console.log({itemStatsResult})
+            
+            const itemStats = itemStatsResult || { totalRevenue: 0, totalCost: 0, itemLevelDiscount: 0 };
 
             // Get total commissions with same filters
             const commissionWhereClause = {
-                UserId: { [Op.in]: targetShopIds }
+                UserId: { [Op.in]: validShopIds }
             };
 
-            // Apply date range filter to commissions if provided
             if (dateRange?.startDate && dateRange?.endDate) {
                 const start = new Date(dateRange.startDate);
                 start.setHours(0, 0, 0, 0);
@@ -553,7 +637,7 @@ const OrderService = {
 
             // Get total products with same shop filters (no date filter for products)
             const productWhereClause = {
-                UserId: { [Op.in]: targetShopIds },
+                UserId: { [Op.in]: validShopIds },
                 status: 'active'
             };
 
@@ -561,38 +645,36 @@ const OrderService = {
                 where: productWhereClause
             }) || 0;
 
-            // Calculate detailed statistics
-            const stats = orders.reduce((acc, order) => {
-                acc.totalSales += Number(order.total);
-                acc.totalOrders++;
-                acc.totalDiscount += Number(order.discount);
-                acc.totalTax += Number(order.tax);
+            // Extract and calculate statistics
+            const totalSales = Number(orderStats?.totalSales || 0);
+            const totalOrders = Number(orderStats?.totalOrders || 0);
+            const orderLevelDiscount = Number(orderStats?.orderLevelDiscount || 0);
+            const totalTax = Number(orderStats?.totalTax || 0);
+            
+            const totalRevenue = Number(itemStats?.totalRevenue || 0);
+            const totalCost = Number(itemStats?.totalCost || 0);
+            const itemLevelDiscount = Number(itemStats?.itemLevelDiscount || 0);
+            
+            // Calculate total discount (order-level + item-level)
+            const totalDiscount = orderLevelDiscount + itemLevelDiscount;
+            
+            // Calculate profit/loss
+            const netProfit = totalRevenue - totalCost;
+            const totalProfit = netProfit >= 0 ? netProfit : 0;
+            const totalLoss = netProfit < 0 ? Math.abs(netProfit) : 0;
 
-                // Calculate profit/loss per item
-                order.OrderItems.forEach(item => {
-                    const costPrice = Number(item?.purchasePrice || item.Product.purchasePrice || 0);
-                    const revenue = Number(item.unitPrice * item.quantity);
-                    const cost = Number(costPrice * item.quantity);
-                    const itemProfit = Number(revenue - cost);
-
-                    if (itemProfit >= 0) {
-                        acc.totalProfit += Number(itemProfit);
-                    } else {
-                        acc.totalLoss += Number(Math.abs(itemProfit));
-                    }
-                });
-
-                return acc;
-            }, {
-                totalSales: 0,
-                totalOrders: 0,
-                totalProfit: 0,
-                totalLoss: 0,
-                totalDiscount: 0,
-                totalTax: 0,
-                totalCommissions: Number(totalCommissions),
+            const stats = {
+                totalSales: Number(totalSales.toFixed(2)),
+                totalOrders: Number(totalOrders),
+                totalProfit: Number(totalProfit.toFixed(2)),
+                totalLoss: Number(totalLoss.toFixed(2)),
+                totalDiscount: Number(totalDiscount.toFixed(2)),
+                orderLevelDiscount: Number(orderLevelDiscount.toFixed(2)),
+                itemLevelDiscount: Number(itemLevelDiscount.toFixed(2)),
+                totalTax: Number(totalTax.toFixed(2)),
+                totalCommissions: Number(totalCommissions.toFixed(2)),
                 totalProducts: Number(totalProducts)
-            });
+            };
 
             return {
                 status: true,
@@ -600,6 +682,7 @@ const OrderService = {
                 data: stats
             };
         } catch (error) {
+            console.error('getDashboardStats error:', error);
             return {
                 status: false,
                 message: error.isClientError ? error.message : "Failed to retrieve dashboard statistics",
@@ -721,9 +804,12 @@ const OrderService = {
             // Format invoice data with full order details
             const invoiceData = {
                 invoiceNumber: `INV-${order.orderNumber}`,
-                orderNumber: order.orderNumber,
-                date: order.orderDate,
-                orderStatus: order.orderStatus,
+                orderNumber: order?.orderNumber,
+                date: order?.orderDate,
+                orderStatus: order?.orderStatus,
+                specialNotes: order?.specialNotes,
+                guestNumber: order?.guestNumber,
+                tableNumber: order?.tableNumber,
 
                 // Full order details
                 order: {

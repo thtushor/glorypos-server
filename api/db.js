@@ -61,8 +61,8 @@ if (process.env.NODE_ENV === 'development') {
 // alter: true
 
 sequelize
-    // .sync({ force: false })   // ✅ NO ALTER
-    .sync({ alter: true, force: false })
+    .sync({ force: false })   // ✅ NO ALTER
+    // .sync({ alter: true, force: false })
     .then(async (res) => {
         console.log("Database Connected", process.env.PORT);
     })

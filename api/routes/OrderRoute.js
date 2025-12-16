@@ -26,7 +26,7 @@ router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, as
 
 
 // Get  order history
-router.get('/:orderId', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+router.get('/single-order/:orderId', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const result = await OrderService.getById(req?.params.orderId, req.accessibleShopIds);
     res.status(result.status ? 200 : 400).json(result);
 }));

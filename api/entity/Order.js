@@ -62,6 +62,19 @@ const Order = sequelize.define('Order', {
         defaultValue: null,
         comment: "Table number for dine-in orders"
     },
+    guestNumber: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        defaultValue: null,
+        comment: "guest number for dine-in orders"
+    },
+
+    specialNotes: {
+        type: Sequelize.STRING,
+        allowNull: true,
+        defaultValue: null,
+        comment: "special notes for dine-in orders"
+    },
     // Partial payment tracking fields
     cashAmount: {
         type: Sequelize.DECIMAL(10, 2),
