@@ -11,6 +11,7 @@ const {
     UserRole,
     Category,
     Brand,
+    Unit,
 } = require('../entity');
 const sequelize = require('../db');
 const { Op, fn, col, literal } = require('sequelize');
@@ -50,8 +51,7 @@ const OrderService = {
             // Validate and calculate prices for all items
             const { validatedItems, subtotal } = await this.validateOrderItems(orderData?.items, transaction, accessibleShopIds);
 
-            console.log({ validatedItems, subtotal })
-
+            const orderId = orderData?.orderId || null;
             // Calculate tax and total
             const tableNumber = orderData?.tableNumber || null;
             const guestNumber = orderData?.guestNumber || null;
@@ -96,11 +96,40 @@ const OrderService = {
 
             paymentStatus = kotPaymentStatus === "pending" ? "pending" : paymentStatus
 
-            // Generate unique order number
-            const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            // Generate unique order number where it should be less 8 digits and it should be unique
+            // const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
+            let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
+            while(await Order.findOne({ where: { orderNumber }, transaction })){
+                orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
+            }
 
+            let order = null;
+            if(orderId){
+                order = await Order.findByPk(orderId, { transaction });
+                if(!order){
+                    throw new Error(`Order with ID ${orderId} not found`);
+                }
+
+                await Order.update({
+                    ...orderData,
+                    tableNumber,
+                    guestNumber,
+                    specialNotes,
+                    subtotal,
+                    tax,
+                    discount,
+                    total,
+                    cashAmount,
+                    cardAmount,
+                    walletAmount,
+                    paidAmount,
+                    paymentMethod,
+                    orderStatus: paymentStatus === "pending" ? "processing" : "completed",
+                    paymentStatus
+                }, { transaction, where: { id: orderId } });
+            } else {
             // Create order
-            const order = await Order.create({
+             order = await Order.create({
                 ...orderData,
                 tableNumber,
                 guestNumber,
@@ -117,12 +146,15 @@ const OrderService = {
                 walletAmount,
                 paidAmount,
                 paymentMethod,
+                orderStatus: paymentStatus === "pending" ? "processing" : "completed",
                 paymentStatus
             }, { transaction });
+            }
 
             // Process order items and update stock
             for (const item of validatedItems) {
                 const {
+                    orderItemId,
                     productId,
                     variantId,
                     quantity,
@@ -136,23 +168,43 @@ const OrderService = {
                     discountAmount
                 } = item;
 
-                console.log({ unitPrice, orderPrice: orderData?.unitPrice, productPrice: product.price })
-
                 // Create order item
-                await OrderItem.create({
-                    OrderId: order.id,
-                    ProductId: productId,
-                    ProductVariantId: variantId,
-                    quantity,
-                    unitPrice: unitPrice,
-                    discountAmount: discountAmount,
-                    originalUnitPrice: product.price,
-                    subtotal,
-                    discountType,
-                    unitDiscount: discount,
-                    purchasePrice: Number(product?.purchasePrice || 0),
-                }, { transaction });
 
+                if (orderItemId) {
+                    const orderItem = await OrderItem.findByPk(orderItemId, { transaction });
+                    
+                    if (!orderItem) {
+                        throw new Error(`Order item with ID ${orderItemId} not found`);
+                    }
+
+                    await OrderItem.update({
+                        ProductId: productId,
+                        ProductVariantId: variantId,
+                        quantity,
+                        unitPrice: unitPrice,
+                        discountAmount: discountAmount,
+                        originalUnitPrice: product.price,
+                        subtotal,
+                        discountType,
+                        unitDiscount: discount,
+                        purchasePrice: Number(product?.purchasePrice || 0),
+                    }, { transaction, where: { id: orderItemId } });
+                } else {
+                    await OrderItem.create({
+                        id: orderItemId,
+                        OrderId: order.id,
+                        ProductId: productId,
+                        ProductVariantId: variantId,
+                        quantity,
+                        unitPrice: unitPrice,
+                        discountAmount: discountAmount,
+                        originalUnitPrice: product.price,
+                        subtotal,
+                        discountType,
+                        unitDiscount: discount,
+                        purchasePrice: Number(product?.purchasePrice || 0),
+                    }, { transaction });
+                }
                 // Update stock
                 const newStock = currentStock - quantity;
 
@@ -216,7 +268,8 @@ const OrderService = {
             return {
                 status: false,
                 message: "Failed to create order",
-                error: error.message
+                error: error.message,
+                ...error,
             };
         }
     },
@@ -373,15 +426,25 @@ const OrderService = {
     },
 
     async getById(orderId) {
-        try {
-            const order = await Order.findByPk(orderId, { include: [{ model: OrderItem, as: 'items' }] });
-            if (!order) {
-                return { status: false, message: 'Order not found', data: null };
-            }
-            return { status: true, message: 'Order retrieved successfully', data: order };
-        } catch (error) {
-            return { status: false, message: 'Failed to retrieve order', error };
+
+        const order = await Order.findOne({
+            where: {
+                id: Number(orderId)
+            },
+            include: [{
+                model: OrderItem,
+                include: [{ model: Product, include: [{ model: Color }, { model: Size }, { model: Unit }, { model: Brand }] }, {
+                    model: ProductVariant, include: [
+                        { model: Product, include: [{ model: Color }, { model: Size }, { model: Brand }, { model: Unit }] },
+                        { model: Color }, { model: Size }]
+                }]
+            }]
+        });
+        console.log(order);
+        if (!order) {
+            return { status: false, message: 'Order not found', data: null };
         }
+        return { status: true, message: 'Order retrieved successfully', data: order };
     },
 
     async delete(orderId) {
@@ -1666,6 +1729,10 @@ const OrderService = {
 
             // Check stock availability
             if (currentStock < quantity) {
+
+                const orderItemData = item?.orderItemId ? await OrderItem.findOne({where: {id: item?.orderItemId}}): null;
+
+                if(!orderItemData || Number(orderItemData.quantity)<Number(quantity))
                 throw new Error(`Insufficient stock for ${variant ? 'variant' : 'product'} ${variant ? variantId : productId}`);
             }
 
@@ -1690,6 +1757,7 @@ const OrderService = {
             subtotal += itemSubtotal;
 
             validatedItems.push({
+                orderItemId: item.orderItemId,
                 productId,
                 variantId,
                 quantity,
@@ -1702,8 +1770,6 @@ const OrderService = {
                 product,
                 variant
             });
-
-            console.log({ validatedItems })
         }
 
         return { validatedItems, subtotal };

@@ -24,6 +24,13 @@ router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, as
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+
+// Get  order history
+router.get('/:orderId', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await OrderService.getById(req?.params.orderId, req.accessibleShopIds);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
 // Get dashboard statistics
 router.get('/dashboard', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const result = await OrderService.getDashboardStats(req.accessibleShopIds, req.query);
