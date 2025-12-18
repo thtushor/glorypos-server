@@ -754,31 +754,39 @@ const PayrollService = {
 
       if (att) {
         if (att.type === "absent") {
-          // Absent day
+          // Absent day - check if it's half day or full day
+          // isHalfDay: 0/false = Full day absent, isHalfDay: 1/true = Half day absent
+          const isHalfDayAbsent = Boolean(att.isHalfDay);
+
           if (isPaidLeave) {
-            // Paid leave
-            if (att.isHalfDay) {
+            // Paid leave (from approved LeaveRequest)
+            if (isHalfDayAbsent) {
               paidLeaveHalfDays += 0.5;
             } else {
               paidLeaveFullDays += 1;
             }
           } else {
-            // Unpaid leave
-            if (att.isHalfDay) {
+            // Unpaid leave (absent without approved leave)
+            if (isHalfDayAbsent) {
               unpaidLeaveHalfDays += 0.5;
             } else {
               unpaidLeaveFullDays += 1;
             }
           }
         } else if (att.type === "present") {
-          // Present but might be half day
-          if (att.isHalfDay) {
+          // Present - check if it's half day present
+          // If half day present, the other half is considered unpaid leave
+          const isHalfDayPresent = Boolean(att.isHalfDay);
+
+          if (isHalfDayPresent) {
+            // Half day present means half day absent
             if (isPaidLeave) {
               paidLeaveHalfDays += 0.5;
             } else {
               unpaidLeaveHalfDays += 0.5;
             }
           }
+          // If full day present (isHalfDay: 0/false), no deduction needed
         }
       } else {
         // No attendance record - assume present (full day)
@@ -965,8 +973,9 @@ const PayrollService = {
       // Step 8: Calculate Overtime Amount (if provided in options)
       const overtimeAmount = options.overtimeAmount || 0;
 
-      // Step 9: Calculate salary before advance deduction
-      const salaryBeforeAdvance = salaryAfterAttendance +
+      // Step 9: Calculate Net Payable Salary (WITHOUT advance deduction)
+      // Advance salary is only shown for information, not deducted here
+      const netPayableSalary = salaryAfterAttendance +
         commissionData.totalCommission +
         (options.bonusAmount || 0) +
         overtimeAmount -
@@ -974,18 +983,7 @@ const PayrollService = {
         totalFine -
         (options.otherDeduction || 0);
 
-      // Step 10: Apply Advance Deduction Rule
-      const deductionRule = options.advanceDeductionRule || "FULL";
-      const advanceDeductionData = this.calculateAdvanceDeduction(
-        advanceData.outstandingAdvance,
-        salaryBeforeAdvance,
-        deductionRule
-      );
-
-      // Step 11: Final Net Payable Salary
-      const netPayableSalary = Math.max(0, salaryBeforeAdvance - advanceDeductionData.advanceDeduction);
-
-      // Step 12: Calculate current month advance (if any)
+      // Step 10: Calculate current month advance (if any)
       const currentMonthAdvance = advanceData.currentMonthAdvance;
 
       // Build comprehensive response (Simplified)
@@ -1022,15 +1020,17 @@ const PayrollService = {
         overtimeAmount: Number(overtimeAmount.toFixed(2)),
 
         // Deductions
-        advanceAmount: advanceData.totalAdvanceTaken,
-        outstandingAdvanceBefore: advanceData.outstandingAdvance,
-        outstandingAdvanceAfter: advanceDeductionData.remainingAdvance,
-        currentMonthAdvance,
         loanDeduction,
         fineAmount: totalFine,
         otherDeduction: options.otherDeduction || 0,
 
-        // Final Amount
+        // Advance Salary Information (for display only, not deducted)
+        totalAdvanceTaken: advanceData.totalAdvanceTaken,
+        totalAdvanceRepaid: advanceData.totalAdvanceRepaid,
+        outstandingAdvance: advanceData.outstandingAdvance,
+        currentMonthAdvance,
+
+        // Final Amount (without advance deduction)
         netPayableSalary: Number(netPayableSalary.toFixed(2)),
 
         // Commission & Sales
@@ -1047,7 +1047,6 @@ const PayrollService = {
           advanceData,
           attendanceData,
           commissionData,
-          deductionRule,
         },
       };
 

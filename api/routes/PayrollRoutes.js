@@ -161,7 +161,7 @@ router.get(
 
 // Get payroll calculation details (preview for a month)
 router.post(
-  "/payroll/details",
+  "/details",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {

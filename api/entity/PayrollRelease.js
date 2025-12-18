@@ -97,6 +97,13 @@ const PayrollRelease = sequelize.define(
       comment: "Final salary after all additions & deductions",
     },
 
+    // ✅ Final Payable Salary (Auto-calculated & stored)
+    paidAmount: {
+      type: Sequelize.DECIMAL(12, 2),
+      allowNull: false,
+      comment: "Paid amount",
+    },
+
     // ✅ Salary Status
     status: {
       type: Sequelize.ENUM("PENDING", "RELEASED"),
