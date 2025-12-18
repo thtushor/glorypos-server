@@ -1,4 +1,46 @@
 const { ProductVariant, Product, Color, Size } = require('../entity');
+const { Op } = require('sequelize');
+
+/**
+ * Generate a unique SKU for product variant
+ * @param {string} prefix - Prefix for the SKU (e.g., 'VAR')
+ * @param {number} length - Length of random part (default: 6)
+ * @returns {Promise<string>} - Unique generated SKU
+ */
+async function generateUniqueVariantSku(prefix = 'VAR', length = 6) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let sku;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 50;
+
+    while (!isUnique && attempts < maxAttempts) {
+        // Generate random alphanumeric string
+        const randomPart = Array.from({ length }, () =>
+            chars.charAt(Math.floor(Math.random() * chars.length))
+        ).join('');
+
+        sku = `${prefix}-${randomPart}`;
+
+        // Check if SKU already exists
+        const existing = await ProductVariant.findOne({
+            where: { sku: sku },
+            attributes: ['id']
+        });
+
+        if (!existing) {
+            isUnique = true;
+        }
+        attempts++;
+    }
+
+    if (!isUnique) {
+        // Fallback: use timestamp if all attempts failed
+        sku = `${prefix}-${Date.now().toString().slice(-8)}`;
+    }
+
+    return sku;
+}
 
 const ProductVariantService = {
     async create(variantData, userId) {
@@ -53,6 +95,11 @@ const ProductVariantService = {
             } else if (variantData.imageUrl && !processedData.images) {
                 // If only single imageUrl is provided, also store it in images array
                 processedData.images = [variantData.imageUrl];
+            }
+
+            // Auto-generate SKU if not provided or empty
+            if (!processedData.sku || (typeof processedData.sku === 'string' && processedData.sku.trim() === '')) {
+                processedData.sku = await generateUniqueVariantSku('VAR', 6);
             }
 
             const variant = await ProductVariant.create(processedData);
@@ -166,8 +213,6 @@ const ProductVariantService = {
                 }
             }
 
-            console.log("updateData", { updateData });
-
             // Handle images array: set first image to imageUrl and store all in images column
             const processedData = { ...updateData };
 
@@ -190,6 +235,21 @@ const ProductVariantService = {
                         processedData.images = currentImages;
                     }
                 }
+            }
+
+            // Auto-generate SKU if explicitly provided but empty, or if variant doesn't have SKU
+            if (updateData.hasOwnProperty('sku')) {
+                // Field is in request body
+                if (!updateData.sku || (typeof updateData.sku === 'string' && updateData.sku.trim() === '')) {
+                    // Generate if empty or null
+                    processedData.sku = await generateUniqueVariantSku('VAR', 6);
+                }
+            } else if (!variant.sku) {
+                // Field not in body, but variant doesn't have SKU - generate one
+                processedData.sku = await generateUniqueVariantSku('VAR', 6);
+            } else {
+                // Field not in body and variant has SKU - keep existing (remove from update)
+                delete processedData.sku;
             }
 
             const filteredUpdateData = Object.keys(processedData).reduce((acc, key) => {

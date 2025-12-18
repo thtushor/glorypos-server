@@ -1,6 +1,48 @@
 const { Product, Category, Brand, Unit, ProductVariant, Color, Size, User } = require('../entity');
 const { Op } = require('sequelize');
 
+/**
+ * Generate a unique short code
+ * @param {string} prefix - Prefix for the code (e.g., 'SKU', 'PRD')
+ * @param {string} field - Field name to check uniqueness ('sku' or 'code')
+ * @param {number} length - Length of random part (default: 6)
+ * @returns {Promise<string>} - Unique generated code
+ */
+async function generateUniqueCode(prefix = 'PRD', field = 'code', length = 6) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 50;
+
+    while (!isUnique && attempts < maxAttempts) {
+        // Generate random alphanumeric string
+        const randomPart = Array.from({ length }, () =>
+            chars.charAt(Math.floor(Math.random() * chars.length))
+        ).join('');
+
+        code = `${prefix}-${randomPart}`;
+
+        // Check if code already exists
+        const existing = await Product.findOne({
+            where: { [field]: code },
+            attributes: ['id']
+        });
+
+        if (!existing) {
+            isUnique = true;
+        }
+        attempts++;
+    }
+
+    if (!isUnique) {
+        // Fallback: use timestamp if all attempts failed
+        code = `${prefix}-${Date.now().toString().slice(-8)}`;
+    }
+
+    return code;
+}
+
 const ProductService = {
     async create(productData, userId) {
         // Handle images array: set first image to productImage and store all in images column
@@ -16,6 +58,16 @@ const ProductService = {
         } else if (productData.productImage && !processedData.images) {
             // If only single productImage is provided, also store it in images array
             processedData.images = [productData.productImage];
+        }
+
+        // Auto-generate SKU if not provided
+        if (!processedData.sku || processedData.sku.trim() === '') {
+            processedData.sku = await generateUniqueCode('SKU', 'sku', 6);
+        }
+
+        // Auto-generate code if not provided
+        if (!processedData.code || processedData.code.trim() === '') {
+            processedData.code = await generateUniqueCode('PRD', 'code', 6);
         }
 
         const product = await Product.create({
@@ -299,6 +351,36 @@ const ProductService = {
                     processedData.images = currentImages;
                 }
             }
+        }
+
+        // Auto-generate SKU if explicitly provided but empty, or if product doesn't have SKU
+        if (updateData.hasOwnProperty('sku')) {
+            // Field is in request body
+            if (!updateData.sku || (typeof updateData.sku === 'string' && updateData.sku.trim() === '')) {
+                // Generate if empty or null
+                processedData.sku = await generateUniqueCode('SKU', 'sku', 6);
+            }
+        } else if (!product.sku) {
+            // Field not in body, but product doesn't have SKU - generate one
+            processedData.sku = await generateUniqueCode('SKU', 'sku', 6);
+        } else {
+            // Field not in body and product has SKU - keep existing (remove from update)
+            delete processedData.sku;
+        }
+
+        // Auto-generate code if explicitly provided but empty, or if product doesn't have code
+        if (updateData.hasOwnProperty('code')) {
+            // Field is in request body
+            if (!updateData.code || (typeof updateData.code === 'string' && updateData.code.trim() === '')) {
+                // Generate if empty or null
+                processedData.code = await generateUniqueCode('PRD', 'code', 6);
+            }
+        } else if (!product.code) {
+            // Field not in body, but product doesn't have code - generate one
+            processedData.code = await generateUniqueCode('PRD', 'code', 6);
+        } else {
+            // Field not in body and product has code - keep existing (remove from update)
+            delete processedData.code;
         }
 
         await product.update(processedData);
