@@ -28,6 +28,7 @@ const PayrollService = {
     try {
       const date = moment().format("YYYY-MM-DD");
 
+      console.log({ adminId })
       // Validate users
       const users = await UserRole.findAll({
         where: { id: { [Op.in]: userIds }, parentUserId: adminId },
@@ -89,6 +90,8 @@ const PayrollService = {
         where: { id: { [Op.in]: userIds }, parentUserId: adminId },
         transaction,
       });
+
+      console.log({ users, adminId })
       if (users.length !== userIds.length) throw new Error("Invalid users");
 
       const existing = await Attendance.findAll({
@@ -933,7 +936,7 @@ const PayrollService = {
       }
 
 
-// fetch all the employeeh from UserRole table by adminId
+      // fetch all the employeeh from UserRole table by adminId
       const users = await UserRole.findAll({
         where: { parentUserId: adminId },
         transaction,
@@ -941,7 +944,7 @@ const PayrollService = {
 
       for (const user of users) {
         // check any advance salery on this month or not calculate total advance salery from Advance salery month from @api\entity\AdvanceSalary.js .
-        const totalAdvanceSaleryByUser  = 0;
+        const totalAdvanceSaleryByUser = 0;
 
         // calcualte total commissionByUser from @api\entity\StuffCommission.js
         const totalCommissionsByUser = 0;
@@ -951,11 +954,11 @@ const PayrollService = {
         const totalAbsent = 0;
       }
 
-    
+
 
     }
     catch (error) {
-      console.log({error})
+      console.log({ error })
     }
 
   },
@@ -1105,9 +1108,9 @@ const PayrollService = {
       });
       if (!user) throw new Error("Employee not found.");
 
-      const baseSalary = parseFloat(user.baseSalary);
-      if (amount > baseSalary) {
-        throw new Error("Advance amount cannot exceed base salary.");
+      // const baseSalary = parseFloat(user.baseSalary);
+      if (amount <= 0) {
+        throw new Error("Advance amount must be greater than 0.");
       }
 
       const advance = await AdvanceSalary.create({
@@ -1145,13 +1148,14 @@ const PayrollService = {
             model: UserRole,
             as: "UserRole",
             where: userWhere,
-            attributes: ["id", "fullName", "email"],
-          },
-          {
-            model: User,
-            as: "approver",
-            attributes: ["id", "fullName"],
-            required: false,
+            attributes: ["id", "fullName", "email", "baseSalary"],
+            include: [
+              {
+                model: User,
+                as: "parent",
+                attributes: ["id", "fullName"],
+              },
+            ]
           },
         ],
         order: [["createdAt", "DESC"]],

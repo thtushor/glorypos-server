@@ -265,7 +265,7 @@ router.get(
   })
 );
 
-router.put(
+router.post(
   "/advance-salary/:id/status",
   AuthService.authenticate,
   addShopAccess,
