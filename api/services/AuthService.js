@@ -8,38 +8,38 @@ const AuthService = {
     async register(userData) {
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-            if (userData.accountType === "super admin") {
-                const isExistSuperAdmin = await User.findOne({
-                    where: {
-                        accountType: "super admin"
-                    }
-                })
-
-                if (isExistSuperAdmin) {
-                    return { status: false, message: "Super admin already exist", data: null };
+        if (userData.accountType === "super admin") {
+            const isExistSuperAdmin = await User.findOne({
+                where: {
+                    accountType: "super admin"
                 }
+            })
+
+            if (isExistSuperAdmin) {
+                return { status: false, message: "Super admin already exist", data: null };
             }
+        }
 
-            const user = await User.create({
-                ...userData,
-                parent_id: userData?.parentId,
-                password: hashedPassword,
-                accountStatus: 'inactive',
-                isVerified: false
-            });
+        const user = await User.create({
+            ...userData,
+            parent_id: userData?.parentId,
+            password: hashedPassword,
+            accountStatus: 'inactive',
+            isVerified: false
+        });
 
 
 
-            if (!userData?.ignoreEmailVerification) {
-                try {
-                    await EmailService.sendVerificationEmail(user)
-                } catch (error) {
-                    return { status: false, message: "Failed to send verification email", data: null, error };
-                }
+        if (!userData?.ignoreEmailVerification) {
+            try {
+                await EmailService.sendVerificationEmail(user)
+            } catch (error) {
+                return { status: false, message: "Failed to send verification email", data: null, error };
             }
+        }
 
 
-            return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
+        return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
     },
 
     async registerSuperAdmin(userData) {
@@ -243,34 +243,67 @@ const AuthService = {
 
     async authenticate(req, res, next) {
         try {
-            const token = req.headers.authorization?.split(" ")[1] || req.query.token;
+            // Prioritize cookie-based authentication (httpOnly, secure)
+            // Fallback to Authorization header for API clients if needed
+            const token = req.cookies?.access_token ||
+                req.headers.authorization?.replace('Bearer ', '')?.replace('bearer ', '') ||
+                req.query.token;
 
             if (!token) {
-                return res.status(401).json({ status: false, message: "No token provided", data: null });
+                return res.status(401).json({
+                    status: false,
+                    message: "Authentication required. Please login.",
+                    data: null
+                });
             }
 
             let decoded;
             try {
                 decoded = jwt.verify(token, process.env.JWT_SECRET);
             } catch (error) {
-                return res.status(401).json({ status: false, message: "Invalid or expired token", data: null });
+                // Clear invalid cookie if present
+                if (req.cookies?.access_token) {
+                    res.clearCookie('access_token');
+                }
+                return res.status(401).json({
+                    status: false,
+                    message: "Invalid or expired token. Please login again.",
+                    data: null
+                });
             }
 
             const user = await User.findByPk(decoded.id);
 
             if (!user) {
-                return res.status(404).json({ status: false, message: "User not found", data: null });
+                return res.status(404).json({
+                    status: false,
+                    message: "User not found",
+                    data: null
+                });
             }
 
             if (user.accountStatus === "inactive") {
-                return res.status(401).json({ status: false, message: "User is not active. Please contact with support", data: null });
+                return res.status(401).json({
+                    status: false,
+                    message: "User account is inactive. Please contact support",
+                    data: null
+                });
             }
 
+            // Attach user to request object for use in route handlers
             req.user = user;
+            if (decoded.childId) {
+                req.user.childId = decoded.childId;
+            }
 
             next();
         } catch (error) {
-            return res.status(500).json({ status: false, message: "Authentication failed", data: null, error });
+            return res.status(500).json({
+                status: false,
+                message: "Authentication failed",
+                data: null,
+                error: error.message
+            });
         }
     },
 

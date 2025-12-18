@@ -29,7 +29,10 @@ const loanRoutes = require("./routes/LoanRoutes");
 
 const port = process.env.SERVER_PORT || 3000;
 const SchedulerService = require("./services/SchedulerService");
+
+// Configure CORS to allow credentials (cookies)
 app.use(cors());
+
 app.use(express.json());
 app.use(cookiesParser());
 

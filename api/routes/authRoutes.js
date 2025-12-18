@@ -18,15 +18,44 @@ router.post('/register-super-admin', requestHandler(null, async (req, res) => {
 
 router.post('/login', requestHandler(null, async (req, res) => {
     const result = await AuthService.login(req.body.email, req.body.password);
+
+    if (result.status && result.data?.token) {
+        // Set httpOnly cookie for automatic authentication
+        // secure: true in production (HTTPS), false in development
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        res.cookie("access_token", result.data.token, {
+            httpOnly: true,        // 🔒 JS can't access (XSS protection)
+            secure: isProduction,   // HTTPS only in production
+            sameSite: "strict",    // CSRF protection
+            maxAge: 15 * 24 * 60 * 60 * 1000, // 15 days
+            path: '/',             // Available for all routes
+        });
+    }
+
     res.status(200).json(result);
 }));
 
+router.post('/logout', AuthService.authenticate, requestHandler(null, async (req, res) => {
+    // Clear the access_token cookie
+    res.clearCookie('access_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/'
+    });
+
+    res.status(200).json({
+        status: true,
+        message: "Logout successful",
+        data: null
+    });
+}));
+
 router.get('/profile', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const email = req.query.email;
-    // console.log({ request: req.cookies });
-    // Cookies that have been signed
-    //   console.log('Signed Cookies: ', req.signedCookies)
-    const result = await AuthService.getProfile(email,);
+    // Use authenticated user's email from req.user (set by authenticate middleware)
+    const email = req.user?.email;
+    const result = await AuthService.getProfile(email);
     res.status(200).json(result);
 }));
 
@@ -36,28 +65,31 @@ router.get('/single-user/:id', AuthService.authenticate, requestHandler(null, as
 }));
 
 router.post('/profile', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const userId = req.query.userId; // Assuming user ID is available in req.user
+    // Use authenticated user's ID from req.user (set by authenticate middleware)
+    const userId = req.user?.id;
     const result = await AuthService.updateProfile(userId, req.body);
     res.status(200).json(result);
 }));
 
 router.get('/users', AuthService.authenticate, requestHandler(null, async (req, res) => {
-    const UserId = req?.user?.id || null;
+    // Use authenticated user's ID from req.user (set by authenticate middleware)
+    const userId = req.user?.id;
 
-    const result = await AuthService.getAllUsers(req?.query, UserId);
+    const result = await AuthService.getAllUsers(req.query, userId);
     res.status(200).json(result);
 }));
 
 router.get('/sub-shops', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
-    const userId = req?.query?.userId || req?.user?.id;
+    // Use authenticated user's ID from req.user (set by authenticate middleware)
+    const userId = req.user?.id;
 
     if (!userId) {
-        return res.status(400).json({ status: false, message: "userId is required", data: null });
+        return res.status(400).json({ status: false, message: "Authentication required", data: null });
     }
 
     const accessibleShopIds = req.accessibleShopIds || [];
 
-    const result = await AuthService.getSubShops(req?.query, userId, accessibleShopIds);
+    const result = await AuthService.getSubShops(req.query, userId, accessibleShopIds);
     res.status(200).json(result);
 }));
 

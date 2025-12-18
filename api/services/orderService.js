@@ -99,12 +99,12 @@ const OrderService = {
             // Generate unique order number where it should be less 8 digits and it should be unique
             // const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
             let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`;
-            
+
 
             let order = null;
-            if(orderId){
+            if (orderId) {
                 order = await Order.findByPk(orderId, { transaction });
-                if(!order){
+                if (!order) {
                     throw new Error(`Order with ID ${orderId} not found`);
                 }
 
@@ -126,27 +126,27 @@ const OrderService = {
                     paymentStatus
                 }, { transaction, where: { id: orderId } });
             } else {
-            // Create order
-             order = await Order.create({
-                ...orderData,
-                tableNumber,
-                guestNumber,
-                specialNotes,
-                orderNumber,
-                UserId: userId,
-                orderDate: new Date(),
-                subtotal,
-                tax,
-                discount,
-                total,
-                cashAmount,
-                cardAmount,
-                walletAmount,
-                paidAmount,
-                paymentMethod,
-                orderStatus: paymentStatus === "pending" ? "processing" : "completed",
-                paymentStatus
-            }, { transaction });
+                // Create order
+                order = await Order.create({
+                    ...orderData,
+                    tableNumber,
+                    guestNumber,
+                    specialNotes,
+                    orderNumber,
+                    UserId: userId,
+                    orderDate: new Date(),
+                    subtotal,
+                    tax,
+                    discount,
+                    total,
+                    cashAmount,
+                    cardAmount,
+                    walletAmount,
+                    paidAmount,
+                    paymentMethod,
+                    orderStatus: paymentStatus === "pending" ? "processing" : "completed",
+                    paymentStatus
+                }, { transaction });
             }
 
             // Process order items and update stock
@@ -170,7 +170,7 @@ const OrderService = {
 
                 if (orderItemId) {
                     const orderItem = await OrderItem.findByPk(orderItemId, { transaction });
-                    
+
                     if (!orderItem) {
                         throw new Error(`Order item with ID ${orderItemId} not found`);
                     }
@@ -582,7 +582,7 @@ const OrderService = {
             validShopIds.forEach((id, idx) => {
                 queryParams[`shopId${idx}`] = Number(id);
             });
-            
+
             let dateCondition = '';
             if (dateRange?.startDate && dateRange?.endDate) {
                 const start = new Date(dateRange.startDate);
@@ -612,8 +612,8 @@ const OrderService = {
                 type: sequelize.QueryTypes.SELECT
             });
 
-            console.log({itemStatsResult})
-            
+            console.log({ itemStatsResult })
+
             const itemStats = itemStatsResult || { totalRevenue: 0, totalCost: 0, itemLevelDiscount: 0 };
 
             // Get total commissions with same filters
@@ -650,14 +650,14 @@ const OrderService = {
             const totalOrders = Number(orderStats?.totalOrders || 0);
             const orderLevelDiscount = Number(orderStats?.orderLevelDiscount || 0);
             const totalTax = Number(orderStats?.totalTax || 0);
-            
+
             const totalRevenue = Number(itemStats?.totalRevenue || 0);
             const totalCost = Number(itemStats?.totalCost || 0);
             const itemLevelDiscount = Number(itemStats?.itemLevelDiscount || 0);
-            
+
             // Calculate total discount (order-level + item-level)
             const totalDiscount = orderLevelDiscount + itemLevelDiscount;
-            
+
             // Calculate profit/loss
             const netProfit = totalRevenue - totalCost;
             const totalProfit = netProfit >= 0 ? netProfit : 0;
@@ -1109,7 +1109,7 @@ const OrderService = {
             const formattedItems = items.map(item => {
                 const totalQuantity = parseInt(item.dataValues.totalQuantity);
                 const totalRevenue = parseFloat(item.dataValues.totalRevenue);
-                const totalCost = item.Product.purchasePrice * totalQuantity;
+                const totalCost = Number(item.Product.purchasePrice || 0) * totalQuantity;
                 const profit = totalRevenue - totalCost;
 
                 return {
@@ -1816,10 +1816,10 @@ const OrderService = {
             // Check stock availability
             if (currentStock < quantity) {
 
-                const orderItemData = item?.orderItemId ? await OrderItem.findOne({where: {id: item?.orderItemId}}): null;
+                const orderItemData = item?.orderItemId ? await OrderItem.findOne({ where: { id: item?.orderItemId } }) : null;
 
-                if(!orderItemData || Number(orderItemData.quantity)<Number(quantity))
-                throw new Error(`Insufficient stock for ${variant ? 'variant' : 'product'} ${variant ? variantId : productId}`);
+                if (!orderItemData || Number(orderItemData.quantity) < Number(quantity))
+                    throw new Error(`Insufficient stock for ${variant ? 'variant' : 'product'} ${variant ? variantId : productId}`);
             }
 
             // Calculate item subtotal with any applicable discounts
