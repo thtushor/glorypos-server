@@ -21,17 +21,16 @@ const PayrollService = {
   // Case 4: Mark multiple users present for a date
   // Case 4: Mark multiple users present for today's date
 
-  async markMultiplePresent(adminId, { userIds }) {
+  async markMultiplePresent(accessibleShopIds, { userIds }) {
     const transaction = await sequelize.transaction();
     let result;
 
     try {
       const date = moment().format("YYYY-MM-DD");
 
-      console.log({ adminId })
       // Validate users
       const users = await UserRole.findAll({
-        where: { id: { [Op.in]: userIds }, parentUserId: adminId },
+        where: { id: { [Op.in]: userIds }, parentUserId: { [Op.in]: accessibleShopIds } },
         transaction,
       });
       if (users.length !== userIds.length) throw new Error("Invalid users");
@@ -77,7 +76,7 @@ const PayrollService = {
 
   // MARK MULTIPLE ABSENT
   async markMultipleAbsent(
-    adminId,
+    accessibleShopIds,
     { userIds, reason, isHalfDay = false, notes = "" }
   ) {
     const transaction = await sequelize.transaction();
@@ -87,11 +86,13 @@ const PayrollService = {
       const date = moment().format("YYYY-MM-DD");
 
       const users = await UserRole.findAll({
-        where: { id: { [Op.in]: userIds }, parentUserId: adminId },
+        where: {
+          id: { [Op.in]: userIds }, parentUserId: { [Op.in]: accessibleShopIds }
+        },
         transaction,
       });
 
-      console.log({ users, adminId })
+      console.log({ users })
       if (users.length !== userIds.length) throw new Error("Invalid users");
 
       const existing = await Attendance.findAll({
@@ -135,13 +136,13 @@ const PayrollService = {
   },
 
   // UPDATE SINGLE ATTENDANCE (PRESENT or ABSENT)
-  async updateAttendance(adminId, userId, payload) {
+  async updateAttendance(accessibleShopIds, userId, payload) {
     try {
       const date = moment().format("YYYY-MM-DD");
       const type = payload.type || "present";
 
       const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
+        where: { id: userId, parentUserId: { [Op.in]: accessibleShopIds } },
       });
       if (!user) throw new Error("User not found");
 
@@ -183,7 +184,7 @@ const PayrollService = {
   },
 
   // DELETE ATTENDANCE (to undo)
-  async deleteAttendance(adminId, userId, date) {
+  async deleteAttendance(accessibleShopIds, userId, date) {
     try {
       const record = await Attendance.findOne({
         where: { userId, date },
@@ -191,7 +192,7 @@ const PayrollService = {
       if (!record) throw new Error("No attendance record found");
 
       const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
+        where: { id: userId, parentUserId: { [Op.in]: accessibleShopIds } },
       });
       if (!user) throw new Error("Unauthorized");
 
@@ -204,7 +205,7 @@ const PayrollService = {
 
   // Case 6: Create leave request (can be by admin or user, but assume admin for now)
   async createLeaveRequest(
-    adminId,
+    accessibleShopIds,
     { userId, startDate, endDate, type, notes }
   ) {
     try {
@@ -216,7 +217,9 @@ const PayrollService = {
       }
 
       const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
+        where: {
+          id: userId, parentUserId: { [Op.in]: accessibleShopIds }
+        },
       });
       if (!user) {
         throw new Error("User not found");
@@ -238,7 +241,7 @@ const PayrollService = {
   },
 
   // get full leave history
-  async getLeaveHistory(adminId, query = {}) {
+  async getLeaveHistory(accessibleShopIds, query = {}) {
     try {
       const {
         page = 1,
@@ -255,7 +258,7 @@ const PayrollService = {
       const offset = (pageNum - 1) * pageSizeNum;
 
       const where = {};
-      const userWhere = { parentUserId: adminId };
+      const userWhere = { parentUserId: { [Op.in]: accessibleShopIds } };
 
       if (userId) userWhere.id = Number(userId); // also convert
       if (status) where.status = status;
@@ -306,17 +309,19 @@ const PayrollService = {
   },
 
   // Case 6: Update leave status
-  async updateLeaveStatus(adminId, leaveId, { status }) {
+  async updateLeaveStatus(accessibleShopIds, adminId, leaveId, { status }) {
     try {
       const leave = await LeaveRequest.findByPk(leaveId);
+
       if (!leave) {
         throw new Error("Leave not found");
       }
 
       // Check user belongs to admin
       const user = await UserRole.findOne({
-        where: { id: leave.userId, parentUserId: adminId },
+        where: { id: leave.userId, parentUserId: { [Op.in]: accessibleShopIds } },
       });
+
       if (!user) {
         throw new Error("Unauthorized");
       }
@@ -423,7 +428,7 @@ const PayrollService = {
   },
 
   // Case 8: Promotion API (separate for future months)
-  async promoteUser(adminId, { userId, newSalary, startMonth }) {
+  async promoteUser(accessibleShopIds, { userId, newSalary, startMonth }) {
     const transaction = await sequelize.transaction();
     try {
       // Validate startMonth 'YYYY-MM'
@@ -433,7 +438,7 @@ const PayrollService = {
       }
 
       const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
+        where: { id: userId, parentUserId: { [Op.in]: accessibleShopIds } },
       });
       if (!user) {
         throw new Error("User not found");
@@ -544,39 +549,396 @@ const PayrollService = {
     }
   },
 
-  // Case 5,6: Get salary details for month (preview) - Renamed and refactored
-  async calculateMonthlyPayrollDetails(adminId, userId, salaryMonth) {
-    try {
-      // Derive start and end dates from salaryMonth
-      const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
-      const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+  // ============================================
+  // COMPREHENSIVE PAYROLL CALCULATION SERVICE
+  // Following the flowchart step by step
+  // ============================================
 
-      if (!monthStart.isValid() || !monthEnd.isValid()) {
+  /**
+   * Step 1: Fetch Employee Base Salary
+   */
+  async fetchEmployeeBaseSalary(accessibleShopIds, userId) {
+    const user = await UserRole.findOne({
+      where: {
+        id: userId, parentUserId:
+          { [Op.in]: accessibleShopIds }
+      },
+      attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
+    });
+
+    if (!user) {
+      throw new Error("Employee not found");
+    }
+
+    const baseSalary = parseFloat(user.baseSalary || 0);
+    if (!baseSalary || baseSalary <= 0) {
+      throw new Error("Employee base salary not configured");
+    }
+
+    return {
+      userId: user.id,
+      fullName: user.fullName,
+      baseSalary,
+      requiredDailyHours: parseInt(user.requiredDailyHours || 8),
+    };
+  },
+
+  /**
+   * Step 2: Calculate Outstanding Advance Salary
+   * Outstanding Advance = Total Advance Taken - Total Advance Repaid
+   */
+  async calculateOutstandingAdvance(userId, salaryMonth) {
+    // Fetch all approved advance salaries (taken)
+    const advanceSalaries = await AdvanceSalary.findAll({
+      where: {
+        userId,
+        status: "APPROVED",
+      },
+      attributes: ["id", "amount", "salaryMonth"],
+    });
+
+    // Calculate total advance taken
+    const totalAdvanceTaken = advanceSalaries.reduce(
+      (sum, adv) => sum + parseFloat(adv.amount || 0),
+      0
+    );
+
+    // Fetch all released payrolls to calculate total advance repaid
+    const releasedPayrolls = await PayrollRelease.findAll({
+      where: {
+        userId,
+        status: "RELEASED",
+      },
+      attributes: ["advanceAmount"],
+    });
+
+    // Calculate total advance repaid (from payroll releases)
+    const totalAdvanceRepaid = releasedPayrolls.reduce(
+      (sum, payroll) => sum + parseFloat(payroll.advanceAmount || 0),
+      0
+    );
+
+    // Outstanding advance = Taken - Repaid
+    const outstandingAdvance = Math.max(0, totalAdvanceTaken - totalAdvanceRepaid);
+
+    // Get advance for current month
+    const currentMonthAdvance = advanceSalaries
+      .filter((adv) => adv.salaryMonth === salaryMonth)
+      .reduce((sum, adv) => sum + parseFloat(adv.amount || 0), 0);
+
+    return {
+      totalAdvanceTaken,
+      totalAdvanceRepaid,
+      outstandingAdvance,
+      currentMonthAdvance,
+      advanceRecords: advanceSalaries,
+    };
+  },
+
+  /**
+   * Step 3: Calculate Attendance Records (Simplified - Days Only)
+   * - Total Working Days
+   * - Paid Leave Days (Full Day & Half Day)
+   * - Unpaid Leave Days (Full Day & Half Day)
+   * - Salary Deduction for Unpaid Leave
+   */
+  async calculateAttendanceDetails(userId, salaryMonth) {
+    const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+    const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+    const startDate = monthStart.format("YYYY-MM-DD");
+    const endDate = monthEnd.format("YYYY-MM-DD");
+
+    const weekendDays = process.env.WEEKEND_DAYS
+      ? process.env.WEEKEND_DAYS.split(",").map(Number)
+      : [5, 6]; // Friday & Saturday
+
+    console.log({ weekendDays })
+
+    // Fetch holidays, approved leaves, and attendance records
+    const [holidays, approvedLeaves, attendances] = await Promise.all([
+      Holiday.findAll({
+        where: {
+          startDate: { [Op.lte]: endDate },
+          endDate: { [Op.gte]: startDate },
+        },
+      }),
+      LeaveRequest.findAll({
+        where: {
+          userId,
+          status: "approved",
+          startDate: { [Op.lte]: endDate },
+          endDate: { [Op.gte]: startDate },
+        },
+      }),
+      Attendance.findAll({
+        where: {
+          userId,
+          date: { [Op.gte]: startDate, [Op.lte]: endDate },
+        },
+        attributes: ["date", "type", "isHalfDay"],
+        raw: true,
+      }),
+    ]);
+
+
+    // console.log({ holidays, approvedLeaves, attendances })
+
+
+    console.log({ attendances: attendances.map((item) => item) })
+
+    // Build holiday & leave date sets
+    const holidayDates = new Set();
+    holidays.forEach((h) => {
+      let d = moment(h.startDate);
+      const e = moment(h.endDate);
+      while (d <= e) {
+        holidayDates.add(d.format("YYYY-MM-DD"));
+        d.add(1, "day");
+      }
+    });
+
+    const paidLeaveDates = new Set();
+    approvedLeaves.forEach((leave) => {
+      let d = moment(leave.startDate);
+      const e = moment(leave.endDate);
+      while (d <= e) {
+        paidLeaveDates.add(d.format("YYYY-MM-DD"));
+        d.add(1, "day");
+      }
+    });
+
+    // Attendance map
+    const attendanceMap = {};
+    attendances.forEach((att) => {
+      attendanceMap[att.date] = att;
+    });
+
+    // Counters
+    let totalWorkingDays = 0;
+    let totalWeekendDays = 0;
+    let totalHolidayDays = 0;
+
+    // Paid Leave Counters
+    let paidLeaveFullDays = 0;
+    let paidLeaveHalfDays = 0;
+
+    // Unpaid Leave Counters
+    let unpaidLeaveFullDays = 0;
+    let unpaidLeaveHalfDays = 0;
+
+    // Loop through each day of the month
+    let currentDateStr = startDate;
+    while (currentDateStr <= endDate) {
+      const dayOfWeek = moment(currentDateStr).day();
+
+      // Skip weekends
+      if (weekendDays.includes(dayOfWeek)) {
+        totalWeekendDays++;
+        currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
+        continue;
+      }
+
+      // Count working days
+      totalWorkingDays++;
+
+      // Check if it's a holiday
+      if (holidayDates.has(currentDateStr)) {
+        totalHolidayDays++;
+        currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
+        continue;
+      }
+
+      // Check attendance
+      const att = attendanceMap[currentDateStr];
+      const isPaidLeave = paidLeaveDates.has(currentDateStr);
+
+      if (att) {
+        if (att.type === "absent") {
+          // Absent day
+          if (isPaidLeave) {
+            // Paid leave
+            if (att.isHalfDay) {
+              paidLeaveHalfDays += 0.5;
+            } else {
+              paidLeaveFullDays += 1;
+            }
+          } else {
+            // Unpaid leave
+            if (att.isHalfDay) {
+              unpaidLeaveHalfDays += 0.5;
+            } else {
+              unpaidLeaveFullDays += 1;
+            }
+          }
+        } else if (att.type === "present") {
+          // Present but might be half day
+          if (att.isHalfDay) {
+            if (isPaidLeave) {
+              paidLeaveHalfDays += 0.5;
+            } else {
+              unpaidLeaveHalfDays += 0.5;
+            }
+          }
+        }
+      } else {
+        // No attendance record - assume present (full day)
+      }
+
+      // Next day
+      currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
+    }
+
+    // Calculate totals
+    const totalPaidLeaveDays = paidLeaveFullDays + paidLeaveHalfDays;
+    const totalUnpaidLeaveDays = unpaidLeaveFullDays + unpaidLeaveHalfDays;
+    const totalLeaveDays = totalPaidLeaveDays + totalUnpaidLeaveDays;
+
+    // Calculate unpaid leave deduction ratio (based on days)
+    // Each full day = 1 day deduction, each half day = 0.5 day deduction
+    const unpaidLeaveDeductionRatio = totalWorkingDays > 0
+      ? (totalUnpaidLeaveDays / totalWorkingDays)
+      : 0;
+
+    return {
+      totalWorkingDays,
+      totalWeekendDays,
+      totalHolidayDays,
+      // Paid Leave Breakdown
+      paidLeaveFullDays,
+      paidLeaveHalfDays,
+      totalPaidLeaveDays,
+      // Unpaid Leave Breakdown
+      unpaidLeaveFullDays,
+      unpaidLeaveHalfDays,
+      totalUnpaidLeaveDays,
+      // Total Leave
+      totalLeaveDays,
+      // Deduction ratio (0-1) for calculating salary deduction
+      unpaidLeaveDeductionRatio,
+    };
+  },
+
+  /**
+   * Step 4: Calculate Sales & Commission Data
+   */
+  async calculateSalesAndCommission(userId, salaryMonth) {
+    const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+    const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+
+    // Fetch commission records for the month
+    const commissions = await StuffCommission.findAll({
+      where: {
+        UserRoleId: userId,
+        createdAt: {
+          [Op.gte]: monthStart.toDate(),
+          [Op.lte]: monthEnd.toDate(),
+        },
+      },
+      attributes: ["baseAmount", "commissionAmount", "commissionPercentage"],
+    });
+
+    // Calculate total sales and commission
+    const totalSales = commissions.reduce(
+      (sum, comm) => sum + parseFloat(comm.baseAmount || 0),
+      0
+    );
+
+    const totalCommission = commissions.reduce(
+      (sum, comm) => sum + parseFloat(comm.commissionAmount || 0),
+      0
+    );
+
+    return {
+      totalSales,
+      totalCommission,
+      commissionRecords: commissions,
+    };
+  },
+
+  /**
+   * Step 5: Calculate Gross Salary with Additions
+   * Gross Salary = Base Salary + Commission + Bonus
+   */
+  calculateGrossSalary(baseSalary, commission, bonus = 0) {
+    return parseFloat(baseSalary) + parseFloat(commission) + parseFloat(bonus);
+  },
+
+  /**
+   * Step 6: Apply Advance Deduction Rule
+   * Rule: Full Deduction / Partial Deduction / No Deduction
+   */
+  calculateAdvanceDeduction(outstandingAdvance, netSalary, deductionRule = "FULL") {
+    let advanceDeduction = 0;
+    let remainingAdvance = outstandingAdvance;
+
+    switch (deductionRule.toUpperCase()) {
+      case "FULL":
+        // Deduct full outstanding advance
+        advanceDeduction = Math.min(outstandingAdvance, netSalary);
+        remainingAdvance = Math.max(0, outstandingAdvance - advanceDeduction);
+        break;
+
+      case "PARTIAL":
+        // Deduct partial amount (50% of outstanding or net salary, whichever is less)
+        const partialAmount = Math.min(outstandingAdvance * 0.5, netSalary);
+        advanceDeduction = Math.min(partialAmount, netSalary);
+        remainingAdvance = Math.max(0, outstandingAdvance - advanceDeduction);
+        break;
+
+      case "NONE":
+      default:
+        // No deduction this cycle
+        advanceDeduction = 0;
+        remainingAdvance = outstandingAdvance;
+        break;
+    }
+
+    return {
+      advanceDeduction,
+      remainingAdvance,
+    };
+  },
+
+  /**
+   * MAIN PAYROLL CALCULATION FUNCTION
+   * Follows the complete flowchart
+   */
+  async calculateMonthlyPayrollDetails(accessibleShopIds, userId, salaryMonth, options = {}) {
+    try {
+      // Validate salaryMonth format
+      const monthStart = moment(salaryMonth, "YYYY-MM");
+      if (!monthStart.isValid()) {
         throw new Error("Invalid salaryMonth format. Use YYYY-MM.");
       }
 
-      const startDate = monthStart.format("YYYY-MM-DD");
-      const endDate = monthEnd.format("YYYY-MM-DD");
+      // Step 1: Fetch Employee Base Salary
+      const employee = await this.fetchEmployeeBaseSalary(accessibleShopIds, userId);
+      const { baseSalary } = employee;
 
-      // Fetch user details including base salary
-      const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
-        attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
-      });
+      // Step 2: Fetch Advance Salary Records & Calculate Outstanding
+      const advanceData = await this.calculateOutstandingAdvance(userId, salaryMonth);
 
-      // Use baseSalary from User model, as UserRole might not have it directly.
-      const baseSalary = parseFloat(user.baseSalary);
+      // Step 3: Fetch Attendance Records & Calculate Deductions (Simplified - Days Only)
+      const attendanceData = await this.calculateAttendanceDetails(userId, salaryMonth);
 
-      if (!user || !baseSalary || !user.requiredDailyHours) {
-        throw new Error("User not found or base salary/hours not configured");
-      }
+      // Step 4: Fetch Sales & Commission Data
+      const commissionData = await this.calculateSalesAndCommission(userId, salaryMonth);
 
-      // Fetch additional payroll components
-      const [advanceSalaries, employeeLoan, payrollFines, stuffCommissions] = await Promise.all([
-        AdvanceSalary.findAll({
-          where: { userId, salaryMonth, status: "APPROVED" },
-          attributes: ["amount"],
-        }),
+      // Step 5: Calculate Gross Salary
+      const grossSalary = this.calculateGrossSalary(
+        baseSalary,
+        commissionData.totalCommission,
+        options.bonusAmount || 0
+      );
+
+      // Step 6: Calculate Net Salary after attendance deduction
+      // Calculate actual deduction amount based on unpaid leave days
+      const unpaidLeaveDeductionAmount = baseSalary * attendanceData.unpaidLeaveDeductionRatio;
+      const netAttendanceSalary = baseSalary - unpaidLeaveDeductionAmount;
+      const salaryAfterAttendance = Math.max(0, netAttendanceSalary);
+
+      // Step 7: Fetch other deductions
+      const [employeeLoan, payrollFines] = await Promise.all([
         EmployeeLoan.findOne({
           where: { employeeId: userId, status: "ACTIVE" },
           attributes: ["monthlyEMI", "remainingBalance"],
@@ -585,21 +947,7 @@ const PayrollService = {
           where: { userId, salaryMonth },
           attributes: ["amount"],
         }),
-        StuffCommission.findAll({
-          where: {
-            UserRoleId: userId,
-            createdAt: {
-              [Op.gte]: monthStart.toDate(),
-              [Op.lte]: monthEnd.toDate(),
-            },
-          },
-        }),
       ]);
-
-      const totalAdvance = advanceSalaries.reduce(
-        (sum, adv) => sum + parseFloat(adv.amount),
-        0
-      );
 
       let loanDeduction = 0;
       if (employeeLoan && parseFloat(employeeLoan.remainingBalance) > 0) {
@@ -610,196 +958,108 @@ const PayrollService = {
       }
 
       const totalFine = payrollFines.reduce(
-        (sum, fine) => sum + parseFloat(fine.amount),
+        (sum, fine) => sum + parseFloat(fine.amount || 0),
         0
       );
 
-      const totalCommission = stuffCommissions.reduce(
-        (acc, comm) => acc + parseFloat(comm.commissionAmount),
-        0
+      // Step 8: Calculate Overtime Amount (if provided in options)
+      const overtimeAmount = options.overtimeAmount || 0;
+
+      // Step 9: Calculate salary before advance deduction
+      const salaryBeforeAdvance = salaryAfterAttendance +
+        commissionData.totalCommission +
+        (options.bonusAmount || 0) +
+        overtimeAmount -
+        loanDeduction -
+        totalFine -
+        (options.otherDeduction || 0);
+
+      // Step 10: Apply Advance Deduction Rule
+      const deductionRule = options.advanceDeductionRule || "FULL";
+      const advanceDeductionData = this.calculateAdvanceDeduction(
+        advanceData.outstandingAdvance,
+        salaryBeforeAdvance,
+        deductionRule
       );
 
-      const requiredDailyHours = parseInt(user.requiredDailyHours);
+      // Step 11: Final Net Payable Salary
+      const netPayableSalary = Math.max(0, salaryBeforeAdvance - advanceDeductionData.advanceDeduction);
 
-      const weekendDays = process.env.WEEKEND_DAYS
-        ? process.env.WEEKEND_DAYS.split(",").map(Number)
-        : [5, 6]; // Friday & Saturday
+      // Step 12: Calculate current month advance (if any)
+      const currentMonthAdvance = advanceData.currentMonthAdvance;
 
-      const [holidays, approvedLeaves, attendances] = await Promise.all([
-        Holiday.findAll({
-          where: {
-            startDate: { [Op.lte]: endDate },
-            endDate: { [Op.gte]: startDate },
-          },
-        }),
-        LeaveRequest.findAll({
-          where: {
-            userId,
-            status: "approved",
-            startDate: { [Op.lte]: endDate },
-            endDate: { [Op.gte]: startDate },
-          },
-        }),
-        Attendance.findAll({
-          where: {
-            userId,
-            date: { [Op.gte]: startDate, [Op.lte]: endDate },
-          },
-          attributes: [
-            "date",
-            "type",
-            "isHalfDay",
-            "lateMinutes",
-            "extraMinutes",
-          ],
-          raw: true,
-        }),
-      ]);
-
-      // Build holiday & leave sets
-      const holidayDates = new Set();
-      holidays.forEach((h) => {
-        let d = moment(h.startDate);
-        const e = moment(h.endDate);
-        while (d <= e) {
-          holidayDates.add(d.format("YYYY-MM-DD"));
-          d.add(1, "day");
-        }
-      });
-
-      const leaveDates = new Set();
-      approvedLeaves.forEach((leave) => {
-        let d = moment(leave.startDate);
-        const e = moment(leave.endDate);
-        while (d <= e) {
-          leaveDates.add(d.format("YYYY-MM-DD"));
-          d.add(1, "day");
-        }
-      });
-
-      // Attendance map
-      const attendanceMap = {};
-      attendances.forEach((att) => {
-        attendanceMap[att.date] = att;
-      });
-
-      // Counters
-      let totalWorkingDays = 0;
-      let totalWeekendDays = 0;
-      let totalAbsentMinutes = 0;
-      let totalExtraMinutes = 0;
-      let totalHolidayDays = 0;
-      let totalLeaveDays = 0;
-
-      // STRING-BASED LOOP - 100% SAFE
-      let currentDateStr = startDate;
-
-      while (currentDateStr <= endDate) {
-        const dayOfWeek = moment(currentDateStr).day();
-
-        // Skip weekends
-        if (weekendDays.includes(dayOfWeek)) {
-          totalWeekendDays++;
-          currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
-          continue;
-        }
-
-        // Every non-weekend day is a paid working day
-        totalWorkingDays++;
-
-        // CHECK ATTENDANCE FIRST (Critical!)
-        const att = attendanceMap[currentDateStr];
-        let absentMinutesToday = 0;
-
-        if (att) {
-          if (att.type === "absent") {
-            absentMinutesToday = requiredDailyHours * 60; // Full day absent
-          } else if (att.type === "present") {
-            if (att.isHalfDay)
-              absentMinutesToday += requiredDailyHours * 60 * 0.5;
-            if (att.lateMinutes > 0)
-              absentMinutesToday += parseInt(att.lateMinutes);
-            if (att.extraMinutes > 0)
-              totalExtraMinutes += parseInt(att.extraMinutes);
-          }
-        }
-        // No record = full present
-
-        totalAbsentMinutes += absentMinutesToday;
-
-        // Count holidays & leaves (for display only)
-        if (holidayDates.has(currentDateStr)) totalHolidayDays++;
-        if (leaveDates.has(currentDateStr)) totalLeaveDays++;
-
-        // Next day
-        currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
-      }
-
-      // Final calculations
-      const netAbsentMinutes = Math.max(
-        0,
-        totalAbsentMinutes - totalExtraMinutes
-      );
-      const netAbsentHours = Number((netAbsentMinutes / 60).toFixed(2));
-
-      const requiredTotalHours = Number((totalWorkingDays * requiredDailyHours).toFixed(2));
-      const workedHours = Number((requiredTotalHours - netAbsentHours).toFixed(2));
-
-      const totalMinutesInMonth = totalWorkingDays * requiredDailyHours * 60; // Total expected minutes for the working days in the month
-      const perMinuteRate = baseSalary / totalMinutesInMonth; // Per minute rate based on base salary for actual working days
-      const netAttendanceSalary = Number((totalMinutesInMonth - netAbsentMinutes) * perMinuteRate).toFixed(2);
-
-      // Placeholder for bonusAmount (Rule 2) - should be fetched from a Bonus table if implemented
-      const bonusAmount = totalCommission; // Using totalCommission as bonusAmount for now
-      const bonusDescription = null; // Placeholder for bonusDescription
-
-      // Placeholder for overtimeAmount (Rule 5) - should be fetched from an Overtime table if implemented
-      // For now, calculate based on extra minutes
-      const overtimeAmount = Number((totalExtraMinutes / 60).toFixed(2)) * (baseSalary / (30 * requiredDailyHours)); // Rough calculation
-
-      // Placeholder for otherDeduction (Rule 6) - should be fetched from an OtherDeduction table if implemented
-      const otherDeduction = 0;
-
-      // ✅ Final netPayableSalary calculation (Rule 7)
-      const netPayableSalary =
-        parseFloat(netAttendanceSalary) + bonusAmount + overtimeAmount - totalAdvance - loanDeduction - totalFine - otherDeduction;
-
+      // Build comprehensive response (Simplified)
       const data = {
-        userId,
-        fullName: user.fullName,
+        userId: employee.userId,
+        fullName: employee.fullName,
         salaryMonth,
         baseSalary,
-        requiredDailyHours,
-        totalWorkingDays,
-        totalWeekendDays,
-        requiredTotalHours,
-        workedHours,
-        absentHours: netAbsentHours,
-        calculatedOvertimeHours: Number((totalExtraMinutes / 60).toFixed(2)),
-        totalLeaveDays,
-        totalHolidayDays,
-        netAttendanceSalary: Math.max(0, parseFloat(netAttendanceSalary)), // Based on attendance
-        bonusAmount: bonusAmount,
-        bonusDescription: bonusDescription,
-        overtimeAmount: overtimeAmount,
-        advanceAmount: totalAdvance,
-        loanDeduction: loanDeduction,
+
+        // Attendance Details (Days Only)
+        totalWorkingDays: attendanceData.totalWorkingDays,
+        totalWeekendDays: attendanceData.totalWeekendDays,
+        totalHolidayDays: attendanceData.totalHolidayDays,
+
+        // Paid Leave Breakdown
+        paidLeaveFullDays: attendanceData.paidLeaveFullDays,
+        paidLeaveHalfDays: attendanceData.paidLeaveHalfDays,
+        totalPaidLeaveDays: attendanceData.totalPaidLeaveDays,
+
+        // Unpaid Leave Breakdown
+        unpaidLeaveFullDays: attendanceData.unpaidLeaveFullDays,
+        unpaidLeaveHalfDays: attendanceData.unpaidLeaveHalfDays,
+        totalUnpaidLeaveDays: attendanceData.totalUnpaidLeaveDays,
+
+        // Total Leave
+        totalLeaveDays: attendanceData.totalLeaveDays,
+
+        // Salary Calculations
+        grossSalary,
+        netAttendanceSalary: salaryAfterAttendance,
+        unpaidLeaveDeductionAmount: Number(unpaidLeaveDeductionAmount.toFixed(2)),
+        bonusAmount: options.bonusAmount || 0,
+        bonusDescription: options.bonusDescription || null,
+        overtimeAmount: Number(overtimeAmount.toFixed(2)),
+
+        // Deductions
+        advanceAmount: advanceData.totalAdvanceTaken,
+        outstandingAdvanceBefore: advanceData.outstandingAdvance,
+        outstandingAdvanceAfter: advanceDeductionData.remainingAdvance,
+        currentMonthAdvance,
+        loanDeduction,
         fineAmount: totalFine,
-        otherDeduction: otherDeduction,
-        netPayableSalary: Math.max(0, netPayableSalary),
-        status: "PENDING", // Default status for generated payroll
+        otherDeduction: options.otherDeduction || 0,
+
+        // Final Amount
+        netPayableSalary: Number(netPayableSalary.toFixed(2)),
+
+        // Commission & Sales
+        totalSales: commissionData.totalSales,
+        totalCommission: commissionData.totalCommission,
+
+        // Status
+        status: "PENDING",
         releaseDate: null,
         releasedBy: null,
+
+        // Calculation Snapshot
+        calculationSnapshot: {
+          advanceData,
+          attendanceData,
+          commissionData,
+          deductionRule,
+        },
       };
 
-      return { status: true, message: "Salary calculated successfully", data };
+      return { status: true, message: "Payroll calculated successfully", data };
     } catch (error) {
+      console.error("calculateMonthlyPayrollDetails error:", error);
       return { status: false, message: error.message };
     }
   },
 
   // \u2705 Payroll Monthly Auto Generator API
-  async generateMonthlyPayroll(adminId, { userId, salaryMonth }) {
+  async generateMonthlyPayroll(accessibleShopIds, { userId, salaryMonth }) {
     const transaction = await sequelize.transaction();
     try {
       // Prevent duplicate salary for same user + same month
@@ -813,9 +1073,10 @@ const PayrollService = {
       }
 
       const salaryDetailsResult = await this.calculateMonthlyPayrollDetails(
-        adminId,
+        accessibleShopIds, // Convert to array for accessibleShopIds
         userId,
-        salaryMonth
+        salaryMonth,
+        options
       );
 
       if (!salaryDetailsResult.status) {
@@ -824,25 +1085,26 @@ const PayrollService = {
         );
       }
 
-      const calculationSnapshot = salaryDetailsResult.data; // All data is the snapshot
+      const calculationData = salaryDetailsResult.data;
 
       const payrollRelease = await PayrollRelease.create(
         {
           userId,
           salaryMonth,
-          baseSalary: calculationSnapshot.baseSalary,
-          advanceAmount: calculationSnapshot.advanceAmount,
-          bonusAmount: calculationSnapshot.bonusAmount,
-          bonusDescription: calculationSnapshot.bonusDescription,
-          loanDeduction: calculationSnapshot.loanDeduction,
-          fineAmount: calculationSnapshot.fineAmount,
-          overtimeAmount: calculationSnapshot.overtimeAmount,
-          otherDeduction: calculationSnapshot.otherDeduction,
-          netPayableSalary: calculationSnapshot.netPayableSalary,
+          shopId: adminId,
+          baseSalary: calculationData.baseSalary,
+          advanceAmount: calculationData.advanceAmount,
+          bonusAmount: calculationData.bonusAmount,
+          bonusDescription: calculationData.bonusDescription,
+          loanDeduction: calculationData.loanDeduction,
+          fineAmount: calculationData.fineAmount,
+          overtimeAmount: calculationData.overtimeAmount,
+          otherDeduction: calculationData.otherDeduction,
+          netPayableSalary: calculationData.netPayableSalary,
           status: "PENDING",
           releaseDate: null,
           releasedBy: null,
-          calculationSnapshot: calculationSnapshot,
+          calculationSnapshot: calculationData.calculationSnapshot,
         },
         { transaction }
       );
@@ -856,11 +1118,11 @@ const PayrollService = {
   },
 
   // \u2705 Salary Release API
-  async releasePayroll(adminId, payrollReleaseId) {
+  async releasePayroll(accessibleShopIds, adminId, payrollReleaseId, paymentType = "FULL", partialAmount = null) {
     const transaction = await sequelize.transaction();
     try {
       const payrollRelease = await PayrollRelease.findOne({
-        where: { id: payrollReleaseId, shopId: adminId },
+        where: { id: payrollReleaseId, shopId: { [Op.in]: accessibleShopIds } },
         transaction,
       });
 
@@ -870,6 +1132,15 @@ const PayrollService = {
 
       if (payrollRelease.status === "RELEASED") {
         throw new Error("Payroll has already been released.");
+      }
+
+      // Handle payment type (Full or Partial)
+      let actualPaidAmount = parseFloat(payrollRelease.netPayableSalary);
+      if (paymentType === "PARTIAL" && partialAmount) {
+        actualPaidAmount = Math.min(parseFloat(partialAmount), actualPaidAmount);
+        if (actualPaidAmount <= 0) {
+          throw new Error("Partial payment amount must be greater than 0");
+        }
       }
 
       // Update loan outstanding balance if loan deduction was part of this payroll
@@ -900,17 +1171,38 @@ const PayrollService = {
         }
       }
 
+      // Update advance salary records - mark as deducted
+      const snapshot = payrollRelease.calculationSnapshot || {};
+      if (payrollRelease.advanceAmount > 0) {
+        snapshot.advanceRepaid = parseFloat(payrollRelease.advanceAmount);
+        snapshot.outstandingAdvanceAfter = snapshot.advanceData?.outstandingAdvanceAfter || 0;
+      }
+
       await payrollRelease.update(
         {
           status: "RELEASED",
           releaseDate: moment().toDate(),
           releasedBy: adminId,
+          calculationSnapshot: {
+            ...snapshot,
+            paymentType,
+            actualPaidAmount,
+            releaseDate: moment().toDate(),
+          },
         },
         { transaction }
       );
 
       await transaction.commit();
-      return { status: true, message: "Payroll released successfully", data: payrollRelease };
+      return {
+        status: true,
+        message: `Payroll released successfully (${paymentType})`,
+        data: {
+          ...payrollRelease.toJSON(),
+          actualPaidAmount,
+          paymentType,
+        },
+      };
     } catch (error) {
       await transaction.rollback();
       return { status: false, message: error.message };
@@ -942,26 +1234,16 @@ const PayrollService = {
         transaction,
       });
 
-      for (const user of users) {
-        // check any advance salery on this month or not calculate total advance salery from Advance salery month from @api\entity\AdvanceSalary.js .
-        const totalAdvanceSaleryByUser = 0;
-
-        // calcualte total commissionByUser from @api\entity\StuffCommission.js
-        const totalCommissionsByUser = 0;
-
-        const totalSaleryThisMonth = user.baseSalary;
-
-        const totalAbsent = 0;
-      }
-
-
-
+      // This function is incomplete - use generatePayrollForAllEmployeesByMonth instead
+      throw new Error("This function is incomplete. Use generatePayrollForAllEmployeesByMonth instead.");
+    } catch (error) {
+      await transaction.rollback();
+      console.error("releasePayrollForAllEmployeeByMonth error:", error);
+      return { status: false, message: error.message };
     }
-    catch (error) {
-      console.log({ error })
-    }
-
   },
+
+
 
   // NEW: Full release history (admin view)
   // PayrollService.js - Updated for salaryMonth system
@@ -1100,10 +1382,10 @@ const PayrollService = {
   },
 
   // === ADVANCE SALARY CRUD ===
-  async createAdvanceSalary(adminId, { userId, salaryMonth, amount, reason }) {
+  async createAdvanceSalary({ userId, salaryMonth, amount, reason }) {
     try {
       const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
+        where: { id: userId },
         attributes: ["id", "fullName", "baseSalary"],
       });
       if (!user) throw new Error("Employee not found.");
@@ -1127,15 +1409,20 @@ const PayrollService = {
     }
   },
 
-  async getAdvanceSalaries(adminId, query = {}) {
+  async getAdvanceSalaries(accessibleShopIds, query = {}) {
     try {
-      const { page = 1, pageSize = 10, userId, status, salaryMonth } = query;
+      const { page = 1, pageSize = 10, userId, shopId, status, salaryMonth } = query;
       const pageNum = Number(page) || 1;
       const pageSizeNum = Number(pageSize) || 10;
       const offset = (pageNum - 1) * pageSizeNum;
 
       const where = {};
-      const userWhere = { parentUserId: adminId };
+      const userWhere = {
+        parentUserId:
+          { [Op.in]: accessibleShopIds }
+      };
+
+      if (shopId) userWhere.parentUserId = Number(shopId);
 
       if (userId) userWhere.id = Number(userId);
       if (status) where.status = status;
@@ -1170,14 +1457,17 @@ const PayrollService = {
     }
   },
 
-  async updateAdvanceSalaryStatus(adminId, advanceId, status) {
+  async updateAdvanceSalaryStatus(accessibleShopIds, adminId, advanceId, status) {
     try {
       const advance = await AdvanceSalary.findByPk(advanceId);
       if (!advance) throw new Error("Advance salary record not found.");
 
       // Ensure admin has rights to manage this user's advance
       const user = await UserRole.findOne({
-        where: { id: advance.userId, parentUserId: adminId },
+        where: {
+          id: advance.userId, parentUserId:
+            { [Op.in]: accessibleShopIds }
+        },
       });
       if (!user) throw new Error("Unauthorized to update this advance record.");
 
@@ -1188,13 +1478,13 @@ const PayrollService = {
     }
   },
 
-  async deleteAdvanceSalary(adminId, advanceId) {
+  async deleteAdvanceSalary(accessibleShopIds, advanceId) {
     try {
       const advance = await AdvanceSalary.findByPk(advanceId);
       if (!advance) throw new Error("Advance salary record not found.");
 
       const user = await UserRole.findOne({
-        where: { id: advance.userId, parentUserId: adminId },
+        where: { id: advance.userId, parentUserId: { [Op.in]: accessibleShopIds } },
       });
       if (!user) throw new Error("Unauthorized to delete this advance record.");
 
@@ -1205,77 +1495,8 @@ const PayrollService = {
     }
   },
 
-  // === PAYROLL FINE CRUD ===
-  async createPayrollFine(adminId, { userId, salaryMonth, amount, reason }) {
-    try {
-      const user = await UserRole.findOne({
-        where: { id: userId, parentUserId: adminId },
-      });
-      if (!user) throw new Error("Employee not found.");
 
-      const fine = await PayrollFine.create({
-        userId,
-        salaryMonth,
-        amount,
-        reason,
-      });
-      return { status: true, message: "Payroll fine added.", data: fine };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
 
-  async getPayrollFines(adminId, query = {}) {
-    try {
-      const { page = 1, pageSize = 10, userId, salaryMonth } = query;
-      const pageNum = Number(page) || 1;
-      const pageSizeNum = Number(pageSize) || 10;
-      const offset = (pageNum - 1) * pageSizeNum;
-
-      const where = {};
-      const userWhere = { parentUserId: adminId };
-
-      if (userId) userWhere.id = Number(userId);
-      if (salaryMonth) where.salaryMonth = salaryMonth;
-
-      const { count, rows } = await PayrollFine.findAndCountAll({
-        where,
-        include: [
-          {
-            model: UserRole,
-            as: "UserRole",
-            where: userWhere,
-            attributes: ["id", "fullName", "email"],
-          },
-        ],
-        order: [["createdAt", "DESC"]],
-        limit: pageSizeNum,
-        offset,
-      });
-
-      const totalPages = Math.ceil(count / pageSizeNum);
-      return { status: true, message: "Payroll fines fetched.", data: { fines: rows, pagination: { page: pageNum, pageSize: pageSizeNum, totalCount: count, totalPages }, }, };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
-
-  async deletePayrollFine(adminId, fineId) {
-    try {
-      const fine = await PayrollFine.findByPk(fineId);
-      if (!fine) throw new Error("Payroll fine record not found.");
-
-      const user = await UserRole.findOne({
-        where: { id: fine.userId, parentUserId: adminId },
-      });
-      if (!user) throw new Error("Unauthorized to delete this fine record.");
-
-      await fine.destroy();
-      return { status: true, message: "Payroll fine record deleted." };
-    } catch (error) {
-      return { status: false, message: error.message };
-    }
-  },
 };
 
 module.exports = PayrollService;

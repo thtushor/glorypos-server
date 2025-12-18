@@ -9,7 +9,7 @@ const LeaveRequest = sequelize.define(
     userId: { type: Sequelize.INTEGER, allowNull: false },
     startDate: { type: Sequelize.DATEONLY, allowNull: false },
     endDate: { type: Sequelize.DATEONLY, allowNull: false },
-    type: { type: Sequelize.STRING, allowNull: false }, // e.g., 'sick', 'vacation'
+    type: { type: Sequelize.ENUM("sick", "vacation", "paid", "unpaid"), allowNull: false, defaultValue: "unpaid" },
     status: {
       type: Sequelize.ENUM("pending", "approved", "rejected"),
       defaultValue: "pending",

@@ -17,7 +17,7 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.markMultiplePresent(
-      req.user.id,
+      req.accessibleShopIds,
       req.body
     );
     res.status(result.status ? 200 : 400).json(result);
@@ -30,7 +30,7 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.markMultipleAbsent(
-      req.user.id,
+      req.accessibleShopIds,
       req.body
     );
     res.status(result.status ? 200 : 400).json(result);
@@ -43,7 +43,7 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.updateAttendance(
-      req.user.id,
+      req.accessibleShopIds,
       req.params.userId,
       req.body
     );
@@ -73,7 +73,7 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.createLeaveRequest(
-      req.user.id,
+      req.accessibleShopIds,
       req.body
     );
     res.status(result.status ? 201 : 400).json(result);
@@ -85,7 +85,7 @@ router.get(
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.getLeaveHistory(req.user.id, req.query);
+    const result = await PayrollService.getLeaveHistory(req.accessibleShopIds, req.query);
     res.status(result.status ? 200 : 400).json(result);
   })
 );
@@ -96,6 +96,7 @@ router.put(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.updateLeaveStatus(
+      req.accessibleShopIds,
       req.user.id,
       req.params.id,
       req.body
@@ -131,7 +132,7 @@ router.post(
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.promoteUser(req.user.id, req.body);
+    const result = await PayrollService.promoteUser(req.accessibleShopIds, req.body);
     res.status(result.status ? 200 : 400).json(result);
   })
 );
@@ -164,12 +165,12 @@ router.post(
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const { userId, salaryMonth } = req.body;
-    const adminId = req.user.id;
+    const { userId, salaryMonth, ...options } = req.body;
     const result = await PayrollService.calculateMonthlyPayrollDetails(
-      adminId,
+      req?.accessibleShopIds || [],
       userId,
-      salaryMonth
+      salaryMonth,
+      options
     );
     res.status(result.status ? 200 : 400).json(result);
   })
@@ -182,35 +183,26 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.generateMonthlyPayroll(
-      req.user.id,
+      req.accessibleShopIds,
       req.body
     );
     res.status(result.status ? 201 : 400).json(result);
   })
 );
 
-// Release a specific payroll
+// Release a specific payroll (Full or Partial)
 router.put(
   "/payroll/release/:id",
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
+    const { paymentType = "FULL", partialAmount } = req.body;
     const result = await PayrollService.releasePayroll(
+      req.accessibleShopIds,
       req.user.id,
-      req.params.id
-    );
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
-
-// Release a specific payroll
-router.post(
-  "/payroll/release",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.releasePayroll(
-      req.user.id
+      req.params.id,
+      paymentType,
+      partialAmount
     );
     res.status(result.status ? 200 : 400).json(result);
   })
@@ -245,7 +237,6 @@ router.post(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.createAdvanceSalary(
-      req.user.id,
       req.body
     );
     res.status(result.status ? 201 : 400).json(result);
@@ -258,7 +249,7 @@ router.get(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.getAdvanceSalaries(
-      req.user.id,
+      req.accessibleShopIds || [],
       req.query
     );
     res.status(result.status ? 200 : 400).json(result);
@@ -272,6 +263,7 @@ router.post(
   requestHandler(null, async (req, res) => {
     const { status } = req.body;
     const result = await PayrollService.updateAdvanceSalaryStatus(
+      req?.accessibleShopIds || [],
       req.user.id,
       req.params.id,
       status
@@ -286,51 +278,12 @@ router.delete(
   addShopAccess,
   requestHandler(null, async (req, res) => {
     const result = await PayrollService.deleteAdvanceSalary(
-      req.user.id,
+      req.accessibleShopIds,
       req.params.id
     );
     res.status(result.status ? 200 : 400).json(result);
   })
 );
 
-// === PAYROLL FINE ROUTES ===
-router.post(
-  "/payroll-fine",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.createPayrollFine(
-      req.user.id,
-      req.body
-    );
-    res.status(result.status ? 201 : 400).json(result);
-  })
-);
-
-router.get(
-  "/payroll-fine",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.getPayrollFines(
-      req.user.id,
-      req.query
-    );
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
-
-router.delete(
-  "/payroll-fine/:id",
-  AuthService.authenticate,
-  addShopAccess,
-  requestHandler(null, async (req, res) => {
-    const result = await PayrollService.deletePayrollFine(
-      req.user.id,
-      req.params.id
-    );
-    res.status(result.status ? 200 : 400).json(result);
-  })
-);
 
 module.exports = router;
