@@ -208,6 +208,21 @@ router.put(
   })
 );
 
+// NEW: Release payroll with validation
+router.post(
+  "/payroll/release-with-validation",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.releasePayrollWithValidation(
+      req.accessibleShopIds,
+      req.user.id,
+      req.body
+    );
+    res.status(result.status ? 201 : 400).json(result);
+  })
+);
+
 // Get full payroll release history (admin view)
 router.get(
   "/payroll/history",

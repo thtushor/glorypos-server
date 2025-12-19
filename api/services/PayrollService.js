@@ -1208,7 +1208,328 @@ const PayrollService = {
     }
   },
 
-  // \u2705 Salary Release API for whole month newly payrol where each month payrloal should be once for each employee.
+  /**
+   * ✅ NEW: Release Payroll with Validation
+   * This function validates the editable fields against calculated payroll details
+   * and creates a new PayrollRelease record
+   */
+  async releasePayrollWithValidation(accessibleShopIds, adminId, payload) {
+    const transaction = await sequelize.transaction();
+    try {
+      const {
+        userId,
+        salaryMonth,
+        baseSalary,
+        advanceAmount = 0,
+        bonusAmount = 0,
+        bonusDescription = null,
+        loanDeduction = 0,
+        fineAmount = 0,
+        overtimeAmount = 0,
+        otherDeduction = 0,
+        netPayableSalary,
+        paidAmount,
+        shopId,
+        calculationSnapshot,
+      } = payload;
+
+      // Validate required fields
+      if (!userId || !salaryMonth || !shopId) {
+        throw new Error("Missing required fields: userId, salaryMonth, or shopId");
+      }
+
+      // Check existing payroll releases for this user and month
+      const existingPayrolls = await PayrollRelease.findAll({
+        where: { userId, salaryMonth },
+        transaction,
+      });
+
+      // Calculate total already paid amount from previous releases
+      const totalAlreadyPaid = existingPayrolls.reduce(
+        (sum, payroll) => sum + parseFloat(payroll.paidAmount || 0),
+        0
+      );
+
+      // Calculate the expected payroll details using the service
+      const calculatedResult = await this.calculateMonthlyPayrollDetails(
+        accessibleShopIds,
+        userId,
+        salaryMonth,
+        {
+          bonusAmount,
+          bonusDescription,
+          overtimeAmount,
+          otherDeduction,
+        }
+      );
+
+      if (!calculatedResult.status) {
+        throw new Error(`Failed to calculate payroll: ${calculatedResult.message}`);
+      }
+
+      const calculated = calculatedResult.data;
+
+      // Validation: Check if total paid amount (including this release) exceeds net payable
+      const totalPaidAfterThisRelease = totalAlreadyPaid + parseFloat(paidAmount);
+      const calculatedNetPayable = calculated.netPayableSalary;
+
+      if (totalPaidAfterThisRelease > parseFloat(calculatedNetPayable) + 0.01) {
+        throw new Error(
+          `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds net payable salary (${calculatedNetPayable}). Already paid: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`
+        );
+      }
+
+      // Check if already fully paid
+      if (totalAlreadyPaid >= parseFloat(calculatedNetPayable) - 0.01) {
+        throw new Error(
+          `Salary already fully paid for user ${userId} in ${salaryMonth}. Total paid: ${totalAlreadyPaid.toFixed(2)}, Net payable: ${calculatedNetPayable}`
+        );
+      }
+
+      // Validate that this payment doesn't exceed remaining due amount
+      const remainingDue = parseFloat(calculatedNetPayable) - totalAlreadyPaid;
+      if (parseFloat(paidAmount) > remainingDue + 0.01) {
+        throw new Error(
+          `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)})`
+        );
+      }
+
+
+      // Validation: Base Salary (should match exactly)
+      if (Math.abs(parseFloat(baseSalary) - parseFloat(calculated.baseSalary)) > 0.01) {
+        throw new Error(
+          `Base salary mismatch. Expected: ${calculated.baseSalary}, Received: ${baseSalary}`
+        );
+      }
+
+      // Validation: Commission (should match exactly - not editable)
+      const expectedCommission = calculated.totalCommission || 0;
+      const payloadCommission = calculationSnapshot?.commission?.commissionAmount || 0;
+      if (Math.abs(parseFloat(expectedCommission) - parseFloat(payloadCommission)) > 0.01) {
+        throw new Error(
+          `Commission mismatch. Expected: ${expectedCommission}, Received: ${payloadCommission}`
+        );
+      }
+
+      // Validation: Loan Deduction (should match calculated value)
+      if (Math.abs(parseFloat(loanDeduction) - parseFloat(calculated.loanDeduction)) > 0.01) {
+        throw new Error(
+          `Loan deduction mismatch. Expected: ${calculated.loanDeduction}, Received: ${loanDeduction}`
+        );
+      }
+
+      // Validation: Unpaid Leave Deduction (should match calculated value)
+      const expectedLeaveDeduction = calculated.unpaidLeaveDeductionAmount || 0;
+      const payloadLeaveDeduction = calculationSnapshot?.unpaidLeaveDeduction || 0;
+      if (Math.abs(parseFloat(expectedLeaveDeduction) - parseFloat(payloadLeaveDeduction)) > 0.01) {
+        throw new Error(
+          `Unpaid leave deduction mismatch. Expected: ${expectedLeaveDeduction}, Received: ${payloadLeaveDeduction}`
+        );
+      }
+
+      // Validation: Advance Amount (editable, but should be <= outstanding advance)
+      const maxAdvanceDeduction = calculated.outstandingAdvance || 0;
+      if (parseFloat(advanceAmount) > parseFloat(maxAdvanceDeduction)) {
+        throw new Error(
+          `Advance deduction (${advanceAmount}) exceeds outstanding advance (${maxAdvanceDeduction})`
+        );
+      }
+
+      // Validation: Fine Amount (editable, but should match calculated if not overridden)
+      const calculatedFine = calculated.fineAmount || 0;
+      // Allow override but warn if significantly different
+      if (Math.abs(parseFloat(fineAmount) - parseFloat(calculatedFine)) > 0.01) {
+        console.warn(
+          `Fine amount differs from calculated. Calculated: ${calculatedFine}, Provided: ${fineAmount}`
+        );
+      }
+
+      // Calculate expected net payable salary
+      const expectedGross =
+        parseFloat(calculated.baseSalary) +
+        parseFloat(calculated.totalCommission) +
+        parseFloat(bonusAmount) +
+        parseFloat(overtimeAmount);
+
+      const expectedTotalDeductions =
+        parseFloat(expectedLeaveDeduction) +
+        parseFloat(advanceAmount) +
+        parseFloat(fineAmount) +
+        parseFloat(loanDeduction) +
+        parseFloat(otherDeduction);
+
+      const expectedNetPayable = expectedGross - expectedTotalDeductions;
+
+      // Validation: Net Payable Salary (should match calculated)
+      if (Math.abs(parseFloat(netPayableSalary) - expectedNetPayable) > 0.01) {
+        throw new Error(
+          `Net payable salary mismatch. Expected: ${expectedNetPayable.toFixed(2)}, Received: ${netPayableSalary}`
+        );
+      }
+
+      // Validation: Paid Amount (should be <= net payable)
+      if (parseFloat(paidAmount) > parseFloat(netPayableSalary)) {
+        throw new Error(
+          `Paid amount (${paidAmount}) cannot exceed net payable salary (${netPayableSalary})`
+        );
+      }
+
+      // Validation: Paid Amount (should be >= 0)
+      if (parseFloat(paidAmount) < 0) {
+        throw new Error("Paid amount cannot be negative");
+      }
+
+      // Calculate due amount
+      const dueAmount = parseFloat(netPayableSalary) - parseFloat(paidAmount);
+
+      // Build enhanced calculation snapshot
+      const enhancedSnapshot = {
+        workingDays: calculated.totalWorkingDays,
+        presentDays: calculated.totalWorkingDays - calculated.totalUnpaidLeaveDays,
+        paidLeaveDays: calculated.totalPaidLeaveDays,
+        unpaidLeaveDays: calculated.totalUnpaidLeaveDays,
+        perDaySalary: calculated.baseSalary / calculated.totalWorkingDays,
+        unpaidLeaveDeduction: expectedLeaveDeduction,
+
+        advance: {
+          totalTaken: calculated.totalAdvanceTaken,
+          totalRepaidBefore: calculated.totalAdvanceRepaid,
+          deductedThisMonth: parseFloat(advanceAmount),
+          remaining: parseFloat(maxAdvanceDeduction) - parseFloat(advanceAmount),
+        },
+
+        ...(calculated.totalSales > 0 && {
+          commission: {
+            totalSales: calculated.totalSales,
+            commissionRate: calculated.calculationSnapshot?.commissionData?.commissionRecords?.[0]?.commissionPercentage || "0%",
+            commissionAmount: calculated.totalCommission,
+          },
+        }),
+
+        salaryBreakdown: {
+          gross: expectedGross,
+          totalDeductions: expectedTotalDeductions,
+          netPayable: parseFloat(netPayableSalary),
+          paid: parseFloat(paidAmount),
+          due: dueAmount,
+        },
+
+        // Include original calculation snapshot
+        originalCalculation: calculated.calculationSnapshot,
+      };
+
+      // Create PayrollRelease record
+      const payrollRelease = await PayrollRelease.create(
+        {
+          userId,
+          salaryMonth,
+          baseSalary: parseFloat(baseSalary),
+          advanceAmount: parseFloat(advanceAmount),
+          bonusAmount: parseFloat(bonusAmount),
+          bonusDescription,
+          loanDeduction: parseFloat(loanDeduction),
+          fineAmount: parseFloat(fineAmount),
+          overtimeAmount: parseFloat(overtimeAmount),
+          otherDeduction: parseFloat(otherDeduction),
+          netPayableSalary: parseFloat(netPayableSalary),
+          paidAmount: parseFloat(paidAmount),
+          shopId,
+          status: dueAmount > 0 ? "PENDING" : "RELEASED",
+          releaseDate: dueAmount > 0 ? null : moment().toDate(),
+          releasedBy: dueAmount > 0 ? null : adminId,
+          calculationSnapshot: enhancedSnapshot,
+        },
+        { transaction }
+      );
+
+      // Update loan balance if loan deduction was applied
+      if (parseFloat(loanDeduction) > 0) {
+        const employeeLoan = await EmployeeLoan.findOne({
+          where: { employeeId: userId, status: "ACTIVE" },
+          transaction,
+        });
+
+        if (employeeLoan) {
+          const newRemainingBalance = parseFloat(employeeLoan.remainingBalance) - parseFloat(loanDeduction);
+          await employeeLoan.update(
+            {
+              remainingBalance: Math.max(0, newRemainingBalance),
+              status: newRemainingBalance <= 0 ? "COMPLETED" : "ACTIVE",
+            },
+            { transaction }
+          );
+
+          // Create loan payment record
+          await LoanPayment.create(
+            {
+              loanId: employeeLoan.id,
+              employeeId: userId,
+              paidAmount: parseFloat(loanDeduction),
+              paidBy: adminId,
+            },
+            { transaction }
+          );
+        }
+      }
+
+      // Update advance salary records if advance was deducted
+      if (parseFloat(advanceAmount) > 0) {
+        // Mark advance salaries as repaid (FIFO - First In First Out)
+        const pendingAdvances = await AdvanceSalary.findAll({
+          where: {
+            userId,
+            status: "APPROVED",
+            salaryMonth: {
+              [Op.lte]: salaryMonth,
+            },
+          },
+          order: [["salaryMonth", "ASC"]],
+          transaction,
+        });
+
+        let remainingDeduction = parseFloat(advanceAmount);
+        for (const advance of pendingAdvances) {
+          if (remainingDeduction <= 0) break;
+
+          const advanceAmountValue = parseFloat(advance.amount);
+          const deductionForThisAdvance = Math.min(advanceAmountValue, remainingDeduction);
+
+          // Update advance status
+          await advance.update(
+            {
+              status: deductionForThisAdvance >= advanceAmountValue ? "REPAID" : "PARTIALLY_REPAID",
+              repaidAmount: (parseFloat(advance.repaidAmount || 0) + deductionForThisAdvance),
+            },
+            { transaction }
+          );
+
+          remainingDeduction -= deductionForThisAdvance;
+        }
+      }
+
+      await transaction.commit();
+
+      return {
+        status: true,
+        message: "Payroll released successfully with validation",
+        data: {
+          ...payrollRelease.toJSON(),
+          dueAmount,
+          validationPassed: true,
+        },
+      };
+    } catch (error) {
+      await transaction.rollback();
+      console.error("releasePayrollWithValidation error:", error);
+      return {
+        status: false,
+        message: error.message,
+        validationPassed: false,
+      };
+    }
+  },
+
+  // ✅ Salary Release API for whole month newly payrol where each month payrloal should be once for each employee.
   //check 1st salery generate or not if generate already then throw error salery alredy generated otherwise generate all the employee payrlol from UserRole table.
   async releasePayrollForAllEmployeeByMonth(adminId, salaryMonth) {
 

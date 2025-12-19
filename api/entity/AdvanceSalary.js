@@ -43,8 +43,15 @@ const AdvanceSalary = sequelize.define(
                 key: "id",
             },
         },
+        repaidAmount: {
+            type: Sequelize.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0,
+            validate: { min: 0 },
+            comment: "Amount that has been repaid from salary deductions",
+        },
         status: {
-            type: Sequelize.ENUM("PENDING", "APPROVED", "REJECTED"),
+            type: Sequelize.ENUM("PENDING", "APPROVED", "REJECTED", "REPAID", "PARTIALLY_REPAID"),
             allowNull: false,
             defaultValue: "PENDING",
         },
