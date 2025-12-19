@@ -973,9 +973,43 @@ const PayrollService = {
       // Step 8: Calculate Overtime Amount (if provided in options)
       const overtimeAmount = options.overtimeAmount || 0;
 
-      // Step 9: Calculate Net Payable Salary (WITHOUT advance deduction)
+      // Step 9: Calculate Previous Months' Unpaid Dues
+      // Fetch all previous payroll releases where there are outstanding dues
+      const previousPayrolls = await PayrollRelease.findAll({
+        where: {
+          userId,
+          salaryMonth: {
+            [Op.lt]: salaryMonth, // All months before current month
+          },
+        },
+        attributes: ["id", "salaryMonth", "netPayableSalary", "paidAmount"],
+        order: [["salaryMonth", "ASC"]],
+      });
+
+      // Calculate total previous dues
+      let totalPreviousDues = 0;
+      const previousDuesBreakdown = [];
+
+      for (const payroll of previousPayrolls) {
+        const netPayable = parseFloat(payroll.netPayableSalary || 0);
+        const paid = parseFloat(payroll.paidAmount || 0);
+        const due = netPayable - paid;
+
+        if (due > 0.01) { // Has outstanding dues
+          totalPreviousDues += due;
+          previousDuesBreakdown.push({
+            salaryMonth: payroll.salaryMonth,
+            netPayable,
+            paid,
+            due: Number(due.toFixed(2)),
+          });
+        }
+      }
+
+      // Step 10: Calculate Net Payable Salary (WITHOUT advance deduction)
       // Advance salary is only shown for information, not deducted here
-      const netPayableSalary = salaryAfterAttendance +
+      // Add previous dues to current month's net payable
+      const currentMonthNetPayable = salaryAfterAttendance +
         commissionData.totalCommission +
         (options.bonusAmount || 0) +
         overtimeAmount -
@@ -983,7 +1017,9 @@ const PayrollService = {
         totalFine -
         (options.otherDeduction || 0);
 
-      // Step 10: Calculate current month advance (if any)
+      const netPayableSalary = currentMonthNetPayable + totalPreviousDues;
+
+      // Step 11: Calculate current month advance (if any)
       const currentMonthAdvance = advanceData.currentMonthAdvance;
 
       // Build comprehensive response (Simplified)
@@ -1030,7 +1066,15 @@ const PayrollService = {
         outstandingAdvance: advanceData.outstandingAdvance,
         currentMonthAdvance,
 
-        // Final Amount (without advance deduction)
+        // Previous Months' Dues Information
+        totalPreviousDues: Number(totalPreviousDues.toFixed(2)),
+        previousDuesBreakdown,
+        hasPreviousDues: totalPreviousDues > 0.01,
+
+        // Current Month Calculation (before adding previous dues)
+        currentMonthNetPayable: Number(currentMonthNetPayable.toFixed(2)),
+
+        // Final Amount (current month + previous dues, without advance deduction)
         netPayableSalary: Number(netPayableSalary.toFixed(2)),
 
         // Commission & Sales
@@ -1047,6 +1091,10 @@ const PayrollService = {
           advanceData,
           attendanceData,
           commissionData,
+          previousDues: {
+            total: Number(totalPreviousDues.toFixed(2)),
+            breakdown: previousDuesBreakdown,
+          },
         },
       };
 
