@@ -92,7 +92,6 @@ const PayrollService = {
         transaction,
       });
 
-      console.log({ users })
       if (users.length !== userIds.length) throw new Error("Invalid users");
 
       const existing = await Attendance.findAll({
@@ -652,8 +651,6 @@ const PayrollService = {
       ? process.env.WEEKEND_DAYS.split(",").map(Number)
       : [5, 6]; // Friday & Saturday
 
-    console.log({ weekendDays })
-
     // Fetch holidays, approved leaves, and attendance records
     const [holidays, approvedLeaves, attendances] = await Promise.all([
       Holiday.findAll({
@@ -680,11 +677,6 @@ const PayrollService = {
       }),
     ]);
 
-
-    // console.log({ holidays, approvedLeaves, attendances })
-
-
-    console.log({ attendances: attendances.map((item) => item) })
 
     // Build holiday & leave date sets
     const holidayDates = new Set();
@@ -1037,10 +1029,12 @@ const PayrollService = {
         (options.otherDeduction || 0);
 
       // Total payable = current month + previous dues
-      const totalPayable = currentMonthNetPayable + totalPreviousDues;
+      let totalPayable = currentMonthNetPayable + totalPreviousDues;
 
       // Remaining due = total payable - already paid in current month
       const currentMonthRemainingDue = totalPayable - currentMonthPaidAmount;
+
+      console.log("currentMonthRemainingDue", { currentMonthRemainingDue, currentMonthPaidAmount, totalPayable, currentMonthNetPayable, totalPreviousDues });
 
       // Net payable is the remaining amount to be paid
       const netPayableSalary = Math.max(0, currentMonthRemainingDue);
@@ -1912,7 +1906,141 @@ const PayrollService = {
     }
   },
 
+  /**
+   * Get all payroll releases with comprehensive filters
+   * Filters: search (username, amount), date range, status, userId, shopId
+   */
+  async getAllPayrollReleases(accessibleShopIds, query = {}) {
+    try {
+      const {
+        page = 1,
+        pageSize = 10,
+        search,
+        startDate,
+        endDate,
+        status,
+        userId,
+        shopId,
+        minAmount,
+        maxAmount,
+      } = query;
 
+      const pageNum = Number(page) || 1;
+      const pageSizeNum = Number(pageSize) || 10;
+      const offset = (pageNum - 1) * pageSizeNum;
+
+      const where = {};
+      const userWhere = { parentUserId: { [Op.in]: accessibleShopIds } };
+
+      // Shop filter
+      if (shopId) {
+        where.shopId = Number(shopId);
+      }
+
+      // User filter
+      if (userId) {
+        where.userId = Number(userId);
+      }
+
+      // Status filter
+      if (status) {
+        where.status = status;
+      }
+
+      // Date range filter (on salaryMonth)
+      if (startDate || endDate) {
+        where.salaryMonth = {};
+        if (startDate) {
+          where.salaryMonth[Op.gte] = startDate;
+        }
+        if (endDate) {
+          where.salaryMonth[Op.lte] = endDate;
+        }
+      }
+
+      // Amount range filter
+      if (minAmount || maxAmount) {
+        where.netPayableSalary = {};
+        if (minAmount) {
+          where.netPayableSalary[Op.gte] = parseFloat(minAmount);
+        }
+        if (maxAmount) {
+          where.netPayableSalary[Op.lte] = parseFloat(maxAmount);
+        }
+      }
+
+      // Search filter (username or amount)
+      if (search) {
+        const searchTerm = search.trim();
+
+        // Check if search is a number (for amount search)
+        const isNumeric = !isNaN(searchTerm) && searchTerm !== '';
+
+        if (isNumeric) {
+          // Search by amount fields
+          where[Op.or] = [
+            { netPayableSalary: { [Op.like]: `%${searchTerm}%` } },
+            { paidAmount: { [Op.like]: `%${searchTerm}%` } },
+            { baseSalary: { [Op.like]: `%${searchTerm}%` } },
+          ];
+        } else {
+          // Search by username
+          userWhere.fullName = { [Op.like]: `%${searchTerm}%` };
+        }
+      }
+
+      const { count, rows } = await PayrollRelease.findAndCountAll({
+        where,
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            where: userWhere,
+            attributes: ["id", "fullName", "email", "role", "baseSalary"],
+            include: [
+              {
+                model: User,
+                as: "parent",
+                attributes: ["id", "fullName", "shopName"],
+              },
+            ],
+          },
+          {
+            model: User,
+            as: "releaser",
+            attributes: ["id", "fullName", "email"],
+            required: false,
+          },
+        ],
+        order: [
+          ["salaryMonth", "DESC"],
+          ["createdAt", "DESC"],
+        ],
+        limit: pageSizeNum,
+        offset,
+      });
+
+      const totalPages = Math.ceil(count / pageSizeNum);
+
+      return {
+        status: true,
+        message: "Payroll releases fetched successfully.",
+        data: {
+          releases: rows,
+          pagination: {
+            page: pageNum,
+            pageSize: pageSizeNum,
+            totalCount: count,
+            totalPages,
+            hasMore: pageNum < totalPages,
+          },
+        },
+      };
+    } catch (error) {
+      console.error("getAllPayrollReleases Error:", error);
+      return { status: false, message: error.message };
+    }
+  },
 
 };
 

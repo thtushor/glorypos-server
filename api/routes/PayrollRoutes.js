@@ -229,7 +229,10 @@ router.get(
   AuthService.authenticate,
   addShopAccess,
   requestHandler(null, async (req, res) => {
-    const result = await PayrollService.getFullReleaseHistory(req.query);
+    const result = await PayrollService.getAllPayrollReleases(
+      req.accessibleShopIds,
+      req.query
+    );
     res.status(result.status ? 200 : 400).json(result);
   })
 );
