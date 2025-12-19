@@ -1006,6 +1006,25 @@ const PayrollService = {
         }
       }
 
+      // Step 9.5: Check Current Month's Existing Payments
+      // Fetch all existing payroll releases for the current month
+      const currentMonthPayrolls = await PayrollRelease.findAll({
+        where: {
+          userId,
+          salaryMonth: salaryMonth, // Current month only
+        },
+        attributes: ["id", "paidAmount", "createdAt"],
+        order: [["createdAt", "ASC"]],
+      });
+
+      // Calculate total already paid in current month
+      const currentMonthPaidAmount = currentMonthPayrolls.reduce(
+        (sum, payroll) => sum + parseFloat(payroll.paidAmount || 0),
+        0
+      );
+
+      const hasCurrentMonthPayments = currentMonthPayrolls.length > 0;
+
       // Step 10: Calculate Net Payable Salary (WITHOUT advance deduction)
       // Advance salary is only shown for information, not deducted here
       // Add previous dues to current month's net payable
@@ -1017,7 +1036,14 @@ const PayrollService = {
         totalFine -
         (options.otherDeduction || 0);
 
-      const netPayableSalary = currentMonthNetPayable + totalPreviousDues;
+      // Total payable = current month + previous dues
+      const totalPayable = currentMonthNetPayable + totalPreviousDues;
+
+      // Remaining due = total payable - already paid in current month
+      const currentMonthRemainingDue = totalPayable - currentMonthPaidAmount;
+
+      // Net payable is the remaining amount to be paid
+      const netPayableSalary = Math.max(0, currentMonthRemainingDue);
 
       // Step 11: Calculate current month advance (if any)
       const currentMonthAdvance = advanceData.currentMonthAdvance;
@@ -1074,7 +1100,18 @@ const PayrollService = {
         // Current Month Calculation (before adding previous dues)
         currentMonthNetPayable: Number(currentMonthNetPayable.toFixed(2)),
 
-        // Final Amount (current month + previous dues, without advance deduction)
+        // Current Month Payment Tracking
+        currentMonthPaidAmount: Number(currentMonthPaidAmount.toFixed(2)),
+        hasCurrentMonthPayments,
+        currentMonthPaymentsCount: currentMonthPayrolls.length,
+
+        // Total Payable (current month + previous dues)
+        totalPayable: Number(totalPayable.toFixed(2)),
+
+        // Remaining Due (total payable - already paid this month)
+        currentMonthRemainingDue: Number(currentMonthRemainingDue.toFixed(2)),
+
+        // Final Amount (remaining to be paid)
         netPayableSalary: Number(netPayableSalary.toFixed(2)),
 
         // Commission & Sales
@@ -1094,6 +1131,18 @@ const PayrollService = {
           previousDues: {
             total: Number(totalPreviousDues.toFixed(2)),
             breakdown: previousDuesBreakdown,
+          },
+          currentMonthPayments: {
+            totalPaid: Number(currentMonthPaidAmount.toFixed(2)),
+            paymentsCount: currentMonthPayrolls.length,
+            hasPayments: hasCurrentMonthPayments,
+          },
+          paymentSummary: {
+            currentMonthNetPayable: Number(currentMonthNetPayable.toFixed(2)),
+            previousDues: Number(totalPreviousDues.toFixed(2)),
+            totalPayable: Number(totalPayable.toFixed(2)),
+            alreadyPaid: Number(currentMonthPaidAmount.toFixed(2)),
+            remainingDue: Number(currentMonthRemainingDue.toFixed(2)),
           },
         },
       };
