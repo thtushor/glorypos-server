@@ -74,7 +74,7 @@ GET /api/payroll/payroll/history
           "parent": {
             "id": 5,
             "fullName": "Admin User",
-            "shopName": "Main Shop"
+            "businessName": "Main Shop"
           }
         },
         "releaser": {

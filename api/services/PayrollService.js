@@ -900,6 +900,49 @@ const PayrollService = {
   },
 
   /**
+   * REUSABLE: Calculate Previous Months' Unpaid Dues
+   * Returns total previous dues and breakdown
+   */
+  async calculatePreviousDues(userId, beforeMonth) {
+    const previousPayrolls = await PayrollRelease.findAll({
+      where: {
+        userId,
+        salaryMonth: {
+          [Op.lt]: beforeMonth, // All months before the specified month
+        },
+      },
+      attributes: ["id", "salaryMonth", "netPayableSalary", "paidAmount"],
+      order: [["salaryMonth", "ASC"]],
+    });
+
+    let totalPreviousDues = 0;
+    const previousDuesBreakdown = [];
+
+    for (const payroll of previousPayrolls) {
+      const netPayable = parseFloat(payroll.netPayableSalary || 0);
+      const paid = parseFloat(payroll.paidAmount || 0);
+      const due = netPayable - paid;
+
+      if (due > 0.01) {
+        // Has outstanding dues
+        totalPreviousDues += due;
+        previousDuesBreakdown.push({
+          salaryMonth: payroll.salaryMonth,
+          netPayable,
+          paid,
+          due: Number(due.toFixed(2)),
+        });
+      }
+    }
+
+    return {
+      totalPreviousDues: Number(totalPreviousDues.toFixed(2)),
+      previousDuesBreakdown,
+      hasPreviousDues: totalPreviousDues > 0.01,
+    };
+  },
+
+  /**
    * MAIN PAYROLL CALCULATION FUNCTION
    * Follows the complete flowchart
    */
@@ -965,38 +1008,11 @@ const PayrollService = {
       // Step 8: Calculate Overtime Amount (if provided in options)
       const overtimeAmount = options.overtimeAmount || 0;
 
-      // Step 9: Calculate Previous Months' Unpaid Dues
-      // Fetch all previous payroll releases where there are outstanding dues
-      const previousPayrolls = await PayrollRelease.findAll({
-        where: {
-          userId,
-          salaryMonth: {
-            [Op.lt]: salaryMonth, // All months before current month
-          },
-        },
-        attributes: ["id", "salaryMonth", "netPayableSalary", "paidAmount"],
-        order: [["salaryMonth", "ASC"]],
-      });
+      // Step 9: Calculate Previous Months' Unpaid Dues (using reusable function)
+      const previousDuesData = await this.calculatePreviousDues(userId, salaryMonth);
+      const totalPreviousDues = previousDuesData.totalPreviousDues;
+      const previousDuesBreakdown = previousDuesData.previousDuesBreakdown;
 
-      // Calculate total previous dues
-      let totalPreviousDues = 0;
-      const previousDuesBreakdown = [];
-
-      for (const payroll of previousPayrolls) {
-        const netPayable = parseFloat(payroll.netPayableSalary || 0);
-        const paid = parseFloat(payroll.paidAmount || 0);
-        const due = netPayable - paid;
-
-        if (due > 0.01) { // Has outstanding dues
-          totalPreviousDues += due;
-          previousDuesBreakdown.push({
-            salaryMonth: payroll.salaryMonth,
-            netPayable,
-            paid,
-            due: Number(due.toFixed(2)),
-          });
-        }
-      }
 
       // Step 9.5: Check Current Month's Existing Payments
       // Fetch all existing payroll releases for the current month
@@ -1335,11 +1351,16 @@ const PayrollService = {
         transaction,
       });
 
-      // Calculate total already paid amount from previous releases
+      // Calculate total already paid amount from previous releases in current month
       const totalAlreadyPaid = existingPayrolls.reduce(
         (sum, payroll) => sum + parseFloat(payroll.paidAmount || 0),
         0
       );
+
+      // Calculate previous months' dues using reusable function
+      const previousDuesData = await this.calculatePreviousDues(userId, salaryMonth);
+      const totalPreviousDues = previousDuesData.totalPreviousDues;
+      const hasPreviousDues = previousDuesData.hasPreviousDues;
 
       // Calculate the expected payroll details using the service
       const calculatedResult = await this.calculateMonthlyPayrollDetails(
@@ -1360,30 +1381,49 @@ const PayrollService = {
 
       const calculated = calculatedResult.data;
 
-      // Validation: Check if total paid amount (including this release) exceeds net payable
-      const totalPaidAfterThisRelease = totalAlreadyPaid + parseFloat(paidAmount);
-      const calculatedNetPayable = calculated.netPayableSalary;
+      // Extract breakdown from calculated data
+      const currentMonthNetPayable = calculated.currentMonthNetPayable; // Current month only (without previous dues)
+      const calculatedNetPayable = calculated.netPayableSalary; // Includes previous dues
+      const calculatedTotalPayable = currentMonthNetPayable + totalPreviousDues;
 
-      if (totalPaidAfterThisRelease > parseFloat(calculatedNetPayable) + 0.01) {
-        throw new Error(
-          `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds net payable salary (${calculatedNetPayable}). Already paid: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`
-        );
+      // Validation: Check if total paid amount (including this release) exceeds total payable
+      const totalPaidAfterThisRelease = totalAlreadyPaid + parseFloat(paidAmount);
+
+      if (totalPaidAfterThisRelease > calculatedTotalPayable + 0.01) {
+        const errorMsg = hasPreviousDues
+          ? `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds total payable (${calculatedTotalPayable.toFixed(2)}). ` +
+          `Breakdown: Current month: ${currentMonthNetPayable.toFixed(2)}, Previous dues: ${totalPreviousDues.toFixed(2)}, ` +
+          `Already paid this month: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`
+          : `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds net payable salary (${calculatedNetPayable}). ` +
+          `Already paid: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`;
+
+        throw new Error(errorMsg);
       }
 
       // Check if already fully paid
-      if (totalAlreadyPaid >= parseFloat(calculatedNetPayable) - 0.01) {
-        throw new Error(
-          `Salary already fully paid for user ${userId} in ${salaryMonth}. Total paid: ${totalAlreadyPaid.toFixed(2)}, Net payable: ${calculatedNetPayable}`
-        );
+      if (totalAlreadyPaid >= calculatedTotalPayable - 0.01) {
+        const errorMsg = hasPreviousDues
+          ? `Salary already fully paid for user ${userId} in ${salaryMonth}. ` +
+          `Total paid: ${totalAlreadyPaid.toFixed(2)}, Total payable: ${calculatedTotalPayable.toFixed(2)} ` +
+          `(Current month: ${currentMonthNetPayable.toFixed(2)} + Previous dues: ${totalPreviousDues.toFixed(2)})`
+          : `Salary already fully paid for user ${userId} in ${salaryMonth}. ` +
+          `Total paid: ${totalAlreadyPaid.toFixed(2)}, Net payable: ${calculatedNetPayable}`;
+
+        throw new Error(errorMsg);
       }
 
       // Validate that this payment doesn't exceed remaining due amount
-      const remainingDue = parseFloat(calculatedNetPayable) - totalAlreadyPaid;
+      const remainingDue = calculatedTotalPayable - totalAlreadyPaid;
       if (parseFloat(paidAmount) > remainingDue + 0.01) {
-        throw new Error(
-          `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)})`
-        );
+        const errorMsg = hasPreviousDues
+          ? `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)}). ` +
+          `Breakdown: Total payable: ${calculatedTotalPayable.toFixed(2)} (Current: ${currentMonthNetPayable.toFixed(2)} + Previous dues: ${totalPreviousDues.toFixed(2)}), ` +
+          `Already paid: ${totalAlreadyPaid.toFixed(2)}`
+          : `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)})`;
+
+        throw new Error(errorMsg);
       }
+
 
 
       // Validation: Base Salary (should match exactly)
@@ -1525,9 +1565,9 @@ const PayrollService = {
           netPayableSalary: parseFloat(netPayableSalary),
           paidAmount: parseFloat(paidAmount),
           shopId,
-          status: dueAmount > 0 ? "PENDING" : "RELEASED",
-          releaseDate: dueAmount > 0 ? null : moment().toDate(),
-          releasedBy: dueAmount > 0 ? null : adminId,
+          status: "RELEASED",
+          releaseDate: new Date(),
+          releasedBy: adminId,
           calculationSnapshot: enhancedSnapshot,
         },
         { transaction }
@@ -2001,7 +2041,7 @@ const PayrollService = {
               {
                 model: User,
                 as: "parent",
-                attributes: ["id", "fullName", "shopName"],
+                attributes: ["id", "fullName", "businessName"],
               },
             ],
           },
