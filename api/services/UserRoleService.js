@@ -10,6 +10,7 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const moment = require("moment");
 const Attendance = require("../entity/Attendance");
+const PayrollService = require("./PayrollService");
 
 const UserRoleService = {
   async addChildUser(parentId, userData) {
@@ -384,6 +385,66 @@ const UserRoleService = {
       return {
         status: false,
         message: "Failed to delete child user",
+        error: error.message,
+      };
+    }
+  },
+
+  async getUserProfile(id, accessibleShopIds) {
+    try {
+      // 1. Get User Details
+      const user = await UserRole.findOne({
+        where: {
+          id,
+          parentUserId: { [Op.in]: accessibleShopIds },
+        },
+        include: [
+          {
+            model: User, // For parent info if needed, or other associations
+            as: "parent"
+          },
+        ],
+        attributes: { exclude: ["password"] },
+      });
+
+      if (!user) {
+        return {
+          status: false,
+          message: "User not found",
+          data: null,
+        };
+      }
+
+      // 2. Get Financial details from PayrollService
+      const financialSummary = await PayrollService.getLifetimeFinancials(id);
+
+      // 3. Get latest Salary History (Current Status)
+      const latestSalary = await SalaryHistory.findOne({
+        where: { userId: id },
+        order: [["startDate", "DESC"]],
+      });
+
+      // 4. Combine Data
+      const profileData = {
+        ...user.toJSON(),
+        financials: {
+          ...financialSummary,
+          currentBaseSalary: user.baseSalary, // Should match user.baseSalary
+          lastSalaryUpdate: latestSalary ? latestSalary.startDate : null,
+          salaryStatus: latestSalary ? latestSalary.status : "initial",
+        },
+      };
+
+      return {
+        status: true,
+        message: "User profile fetched successfully",
+        data: profileData,
+      };
+    } catch (error) {
+      console.error("getUserProfile error:", error);
+      return {
+        status: false,
+        message: "Failed to fetch user profile",
         error: error.message,
       };
     }

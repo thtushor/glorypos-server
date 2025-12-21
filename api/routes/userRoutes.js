@@ -28,6 +28,16 @@ router.post('/child-user/:id',
     })
 );
 
+// Get child user profile (UserRole details + Financials)
+router.get('/child-user/:id',
+    AuthService.authenticate,
+    addShopAccess,
+    requestHandler(null, async (req, res) => {
+        const result = await UserRoleService.getUserProfile(req.params.id, req.accessibleShopIds);
+        res.status(result.status ? 200 : 400).json(result);
+    })
+);
+
 // Get all child users
 router.get('/child-users',
     AuthService.authenticate,

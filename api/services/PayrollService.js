@@ -2082,6 +2082,79 @@ const PayrollService = {
     }
   },
 
+  /**
+   * Get Lifetime Financial Summary for a User
+   */
+  async getLifetimeFinancials(userId) {
+    try {
+      // 1. Total Sales & Commissions
+      const commissions = await StuffCommission.findAll({
+        where: { UserRoleId: userId },
+        attributes: ["baseAmount", "commissionAmount"],
+      });
+
+      const totalSales = commissions.reduce(
+        (sum, c) => sum + parseFloat(c.baseAmount || 0),
+        0
+      );
+      const totalCommission = commissions.reduce(
+        (sum, c) => sum + parseFloat(c.commissionAmount || 0),
+        0
+      );
+
+      // 2. Advance Salary
+      const currentMonth = moment().format("YYYY-MM");
+      const advanceData = await this.calculateOutstandingAdvance(userId, currentMonth);
+
+      // 3. Leave Summary (Approved leaves in current year)
+      const startOfYear = moment().startOf("year").format("YYYY-MM-DD");
+
+      const leaveRequests = await LeaveRequest.findAll({
+        where: {
+          userId,
+          status: "approved",
+          startDate: { [Op.gte]: startOfYear },
+        },
+      });
+
+      let totalLeaveDays = 0;
+      leaveRequests.forEach((leave) => {
+        const start = moment(leave.startDate);
+        const end = moment(leave.endDate);
+        const duration = end.diff(start, "days") + 1;
+        totalLeaveDays += duration;
+      });
+
+      // 4. Payroll History Summary (Total Paid)
+      const payrolls = await PayrollRelease.findAll({
+        where: { userId, status: "RELEASED" },
+        attributes: ["paidAmount"],
+      });
+
+      const totalSalaryPaid = payrolls.reduce((sum, p) => sum + parseFloat(p.paidAmount || 0), 0);
+
+      return {
+        totalSales: Number(totalSales.toFixed(2)),
+        totalCommission: Number(totalCommission.toFixed(2)),
+        advanceSalary: {
+          totalTaken: Number(advanceData.totalAdvanceTaken.toFixed(2)),
+          totalRepaid: Number(advanceData.totalAdvanceRepaid.toFixed(2)),
+          outstanding: Number(advanceData.outstandingAdvance.toFixed(2)),
+        },
+        leaveSummary: {
+          totalDaysThisYear: totalLeaveDays,
+          requestsCount: leaveRequests.length,
+        },
+        salaryDetails: {
+          totalPaidLifetime: Number(totalSalaryPaid.toFixed(2))
+        }
+      };
+    } catch (error) {
+      console.error("getLifetimeFinancials error:", error);
+      throw error;
+    }
+  },
+
 };
 
 module.exports = PayrollService;
