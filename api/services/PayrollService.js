@@ -1345,17 +1345,11 @@ const PayrollService = {
         throw new Error("Missing required fields: userId, salaryMonth, or shopId");
       }
 
-      // Check existing payroll releases for this user and month
-      const existingPayrolls = await PayrollRelease.findAll({
+      // Check if payroll record already exists for this user and month
+      const existingPayroll = await PayrollRelease.findOne({
         where: { userId, salaryMonth },
         transaction,
       });
-
-      // Calculate total already paid amount from previous releases in current month
-      const totalAlreadyPaid = existingPayrolls.reduce(
-        (sum, payroll) => sum + parseFloat(payroll.paidAmount || 0),
-        0
-      );
 
       // Calculate previous months' dues using reusable function
       const previousDuesData = await this.calculatePreviousDues(userId, salaryMonth);
@@ -1380,51 +1374,6 @@ const PayrollService = {
       }
 
       const calculated = calculatedResult.data;
-
-      // Extract breakdown from calculated data
-      const currentMonthNetPayable = calculated.currentMonthNetPayable; // Current month only (without previous dues)
-      const calculatedNetPayable = calculated.netPayableSalary; // Includes previous dues
-      const calculatedTotalPayable = currentMonthNetPayable + totalPreviousDues;
-
-      // Validation: Check if total paid amount (including this release) exceeds total payable
-      const totalPaidAfterThisRelease = totalAlreadyPaid + parseFloat(paidAmount);
-
-      if (totalPaidAfterThisRelease > calculatedTotalPayable + 0.01) {
-        const errorMsg = hasPreviousDues
-          ? `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds total payable (${calculatedTotalPayable.toFixed(2)}). ` +
-          `Breakdown: Current month: ${currentMonthNetPayable.toFixed(2)}, Previous dues: ${totalPreviousDues.toFixed(2)}, ` +
-          `Already paid this month: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`
-          : `Total paid amount (${totalPaidAfterThisRelease.toFixed(2)}) exceeds net payable salary (${calculatedNetPayable}). ` +
-          `Already paid: ${totalAlreadyPaid.toFixed(2)}, Attempting to pay: ${paidAmount}`;
-
-        throw new Error(errorMsg);
-      }
-
-      // Check if already fully paid
-      if (totalAlreadyPaid >= calculatedTotalPayable - 0.01) {
-        const errorMsg = hasPreviousDues
-          ? `Salary already fully paid for user ${userId} in ${salaryMonth}. ` +
-          `Total paid: ${totalAlreadyPaid.toFixed(2)}, Total payable: ${calculatedTotalPayable.toFixed(2)} ` +
-          `(Current month: ${currentMonthNetPayable.toFixed(2)} + Previous dues: ${totalPreviousDues.toFixed(2)})`
-          : `Salary already fully paid for user ${userId} in ${salaryMonth}. ` +
-          `Total paid: ${totalAlreadyPaid.toFixed(2)}, Net payable: ${calculatedNetPayable}`;
-
-        throw new Error(errorMsg);
-      }
-
-      // Validate that this payment doesn't exceed remaining due amount
-      const remainingDue = calculatedTotalPayable - totalAlreadyPaid;
-      if (parseFloat(paidAmount) > remainingDue + 0.01) {
-        const errorMsg = hasPreviousDues
-          ? `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)}). ` +
-          `Breakdown: Total payable: ${calculatedTotalPayable.toFixed(2)} (Current: ${currentMonthNetPayable.toFixed(2)} + Previous dues: ${totalPreviousDues.toFixed(2)}), ` +
-          `Already paid: ${totalAlreadyPaid.toFixed(2)}`
-          : `Payment amount (${paidAmount}) exceeds remaining due amount (${remainingDue.toFixed(2)})`;
-
-        throw new Error(errorMsg);
-      }
-
-
 
       // Validation: Base Salary (should match exactly)
       if (Math.abs(parseFloat(baseSalary) - parseFloat(calculated.baseSalary)) > 0.01) {
@@ -1549,29 +1498,101 @@ const PayrollService = {
         originalCalculation: calculated.calculationSnapshot,
       };
 
-      // Create PayrollRelease record
-      const payrollRelease = await PayrollRelease.create(
-        {
-          userId,
-          salaryMonth,
-          baseSalary: parseFloat(baseSalary),
-          advanceAmount: parseFloat(advanceAmount),
-          bonusAmount: parseFloat(bonusAmount),
-          bonusDescription,
-          loanDeduction: parseFloat(loanDeduction),
-          fineAmount: parseFloat(fineAmount),
-          overtimeAmount: parseFloat(overtimeAmount),
-          otherDeduction: parseFloat(otherDeduction),
-          netPayableSalary: parseFloat(netPayableSalary),
-          paidAmount: parseFloat(paidAmount),
-          shopId,
-          status: "RELEASED",
-          releaseDate: new Date(),
-          releasedBy: adminId,
-          calculationSnapshot: enhancedSnapshot,
-        },
-        { transaction }
-      );
+      let payrollRelease;
+      let isUpdate = false;
+
+      if (existingPayroll) {
+        // UPDATE EXISTING RECORD - Increment editable fields
+        isUpdate = true;
+
+        const updatedPaidAmount = parseFloat(existingPayroll.paidAmount || 0) + parseFloat(paidAmount);
+        const updatedAdvanceAmount = parseFloat(existingPayroll.advanceAmount || 0) + parseFloat(advanceAmount);
+        const updatedBonusAmount = parseFloat(existingPayroll.bonusAmount || 0) + parseFloat(bonusAmount);
+        const updatedOvertimeAmount = parseFloat(existingPayroll.overtimeAmount || 0) + parseFloat(overtimeAmount);
+        const updatedFineAmount = parseFloat(existingPayroll.fineAmount || 0) + parseFloat(fineAmount);
+        const updatedOtherDeduction = parseFloat(existingPayroll.otherDeduction || 0) + parseFloat(otherDeduction);
+
+        // Recalculate net payable with updated values
+        const updatedGross =
+          parseFloat(baseSalary) +
+          parseFloat(calculated.totalCommission) +
+          updatedBonusAmount +
+          updatedOvertimeAmount;
+
+        const updatedTotalDeductions =
+          parseFloat(expectedLeaveDeduction) +
+          updatedAdvanceAmount +
+          updatedFineAmount +
+          parseFloat(loanDeduction) +
+          updatedOtherDeduction;
+
+        const updatedNetPayable = updatedGross - updatedTotalDeductions;
+
+        // Update the existing record
+        await existingPayroll.update(
+          {
+            baseSalary: parseFloat(baseSalary),
+            advanceAmount: updatedAdvanceAmount,
+            bonusAmount: updatedBonusAmount,
+            bonusDescription: bonusDescription || existingPayroll.bonusDescription,
+            loanDeduction: parseFloat(loanDeduction),
+            fineAmount: updatedFineAmount,
+            overtimeAmount: updatedOvertimeAmount,
+            otherDeduction: updatedOtherDeduction,
+            netPayableSalary: updatedNetPayable,
+            paidAmount: updatedPaidAmount,
+            shopId,
+            status: "RELEASED",
+            releaseDate: new Date(),
+            releasedBy: adminId,
+            calculationSnapshot: {
+              ...enhancedSnapshot,
+              updateHistory: [
+                ...(existingPayroll.calculationSnapshot?.updateHistory || []),
+                {
+                  updatedAt: new Date(),
+                  updatedBy: adminId,
+                  incrementedFields: {
+                    paidAmount: parseFloat(paidAmount),
+                    advanceAmount: parseFloat(advanceAmount),
+                    bonusAmount: parseFloat(bonusAmount),
+                    overtimeAmount: parseFloat(overtimeAmount),
+                    fineAmount: parseFloat(fineAmount),
+                    otherDeduction: parseFloat(otherDeduction),
+                  },
+                },
+              ],
+            },
+          },
+          { transaction }
+        );
+
+        payrollRelease = existingPayroll;
+      } else {
+        // CREATE NEW RECORD
+        payrollRelease = await PayrollRelease.create(
+          {
+            userId,
+            salaryMonth,
+            baseSalary: parseFloat(baseSalary),
+            advanceAmount: parseFloat(advanceAmount),
+            bonusAmount: parseFloat(bonusAmount),
+            bonusDescription,
+            loanDeduction: parseFloat(loanDeduction),
+            fineAmount: parseFloat(fineAmount),
+            overtimeAmount: parseFloat(overtimeAmount),
+            otherDeduction: parseFloat(otherDeduction),
+            netPayableSalary: parseFloat(netPayableSalary),
+            paidAmount: parseFloat(paidAmount),
+            shopId,
+            status: "RELEASED",
+            releaseDate: new Date(),
+            releasedBy: adminId,
+            calculationSnapshot: enhancedSnapshot,
+          },
+          { transaction }
+        );
+      }
 
       // Update loan balance if loan deduction was applied
       if (parseFloat(loanDeduction) > 0) {
@@ -1642,11 +1663,14 @@ const PayrollService = {
 
       return {
         status: true,
-        message: "Payroll released successfully with validation",
+        message: isUpdate
+          ? "Payroll updated successfully - editable fields incremented"
+          : "Payroll released successfully with validation",
         data: {
           ...payrollRelease.toJSON(),
           dueAmount,
           validationPassed: true,
+          isUpdate,
         },
       };
     } catch (error) {

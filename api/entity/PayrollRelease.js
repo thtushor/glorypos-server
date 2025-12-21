@@ -146,10 +146,10 @@ const PayrollRelease = sequelize.define(
     timestamps: true,
     indexes: [
       // ✅ Unique index: (userId + salaryMonth)
-      // {
-      //   unique: true,
-      //   fields: ["userId", "salaryMonth"],
-      // },
+      {
+        unique: true,
+        fields: ["userId", "salaryMonth"],
+      },
       // Fast lookup by user
       {
         fields: ["userId"],
