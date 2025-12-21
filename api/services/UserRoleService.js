@@ -424,15 +424,26 @@ const UserRoleService = {
         order: [["startDate", "DESC"]],
       });
 
-      // 4. Combine Data
+      // 4. Calculate Current Month Salary Details
+      const currentMonth = moment().format("YYYY-MM");
+      const currentMonthSalaryResult = await PayrollService.calculateMonthlyPayrollDetails(
+        accessibleShopIds,
+        id,
+        currentMonth
+      );
+
+      // 5. Combine Data
       const profileData = {
         ...user.toJSON(),
         financials: {
           ...financialSummary,
-          currentBaseSalary: user.baseSalary, // Should match user.baseSalary
+          currentBaseSalary: user.baseSalary,
           lastSalaryUpdate: latestSalary ? latestSalary.startDate : null,
           salaryStatus: latestSalary ? latestSalary.status : "initial",
         },
+        currentMonthSalary: currentMonthSalaryResult.status
+          ? currentMonthSalaryResult.data
+          : null,
       };
 
       return {

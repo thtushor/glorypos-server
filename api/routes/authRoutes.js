@@ -54,7 +54,7 @@ router.post('/logout', AuthService.authenticate, requestHandler(null, async (req
 
 router.get('/profile', AuthService.authenticate, requestHandler(null, async (req, res) => {
     // Use authenticated user's email from req.user (set by authenticate middleware)
-    const email = req.user?.email;
+    const email = req.email;
     const result = await AuthService.getProfile(email);
     res.status(200).json(result);
 }));

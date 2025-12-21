@@ -164,31 +164,26 @@ const AuthService = {
     },
 
     async getProfile(email) {
-        try {
-            const user = await User.findOne({ where: { email } });
+        const user = await User.findOne({ where: { email } });
 
-            const parentShop = user.parent_id ? await User.findOne({ where: { id: user.parent_id } }) : null;
+        const parentShop = user?.parent_id ? await User.findOne({ where: { id: user.parent_id } }) : null;
 
-            const childUser = await UserRole.findOne({
-                where: { email }, include: [
+        const childUser = await UserRole.findOne({
+            where: { email }, include: [
 
-                    {
-                        model: User,
-                        as: "parent"
-                    }
-                ]
-            })
+                {
+                    model: User,
+                    as: "parent"
+                }
+            ]
+        })
 
 
-            if (!user && !childUser) {
-                return { status: false, message: "User not found", data: null };
-            }
-
-            return { status: true, message: "Profile retrieved successfully", data: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser } };
-
-        } catch (error) {
-            return { status: false, message: "Failed to retrieve profile", data: null, error };
+        if (!user && !childUser) {
+            return { status: false, message: "User not found", data: null };
         }
+
+        return { status: true, message: "Profile retrieved successfully", data: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser } };
     },
 
     async getUserById(userId) {
@@ -292,8 +287,20 @@ const AuthService = {
 
             // Attach user to request object for use in route handlers
             req.user = user;
+            req.email = req?.user?.email;
             if (decoded.childId) {
-                req.user.childId = decoded.childId;
+                const childUser = await UserRole.findByPk(decoded.childId);
+                if (!childUser) {
+                    return res.status(404).json({
+                        status: false,
+                        message: "Child user not found",
+                        data: null
+                    });
+                }
+
+                req.user.child = childUser;
+
+                req.email = req?.user?.child?.email;
             }
 
             next();
