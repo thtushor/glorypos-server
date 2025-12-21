@@ -181,7 +181,7 @@ const UserRoleService = {
       if (updateData.baseSalary !== undefined) {
         if (userRole.baseSalary === null) {
           // Allow first-time set
-        } else if (updateData.baseSalary !== userRole.baseSalary) {
+        } else if (Number(updateData.baseSalary) !== Number(userRole.baseSalary)) {
           return {
             status: false,
             message: "Salary cannot be updated. It is locked after creation.",

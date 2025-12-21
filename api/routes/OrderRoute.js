@@ -63,6 +63,7 @@ router.get('/report/top-customers', AuthService.authenticate, addShopAccess, req
 
 // Get sales chart data
 router.get('/report/chart/sales', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    console.log({ shopIds: req.accessibleShopIds })
     const result = await OrderService.getSalesChartData(req.accessibleShopIds, req.query);
     res.status(result.status ? 200 : 400).json(result);
 }));

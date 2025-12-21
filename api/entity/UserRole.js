@@ -22,6 +22,7 @@ const UserRole = sequelize.define("UserRole", {
     type: Sequelize.ENUM("active", "inactive"),
     defaultValue: "active",
   },
+  imageUrl: { type: Sequelize.TEXT, allowNull: true, defaultValue: null },
   permissions: {
     type: Sequelize.JSON,
     allowNull: false,
