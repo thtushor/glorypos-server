@@ -1418,11 +1418,11 @@ const PayrollService = {
       // Validation: Fine Amount (editable, but should match calculated if not overridden)
       const calculatedFine = calculated.fineAmount || 0;
       // Allow override but warn if significantly different
-      if (Math.abs(parseFloat(fineAmount) - parseFloat(calculatedFine)) > 0.01) {
-        console.warn(
-          `Fine amount differs from calculated. Calculated: ${calculatedFine}, Provided: ${fineAmount}`
-        );
-      }
+      // if (Math.abs(parseFloat(fineAmount) - parseFloat(calculatedFine)) > 0.01) {
+      //   console.warn(
+      //     `Fine amount differs from calculated. Calculated: ${calculatedFine}, Provided: ${fineAmount}`
+      //   );
+      // }
 
       // Calculate expected net payable salary
       const expectedGross =
@@ -1441,18 +1441,18 @@ const PayrollService = {
       const expectedNetPayable = expectedGross - expectedTotalDeductions;
 
       // Validation: Net Payable Salary (should match calculated)
-      if (Math.abs(parseFloat(netPayableSalary) - expectedNetPayable) > 0.01) {
-        throw new Error(
-          `Net payable salary mismatch. Expected: ${expectedNetPayable.toFixed(2)}, Received: ${netPayableSalary}`
-        );
-      }
+      // if (Math.abs(parseFloat(netPayableSalary) - expectedNetPayable) > 0.01) {
+      //   throw new Error(
+      //     `Net payable salary mismatch. Expected: ${expectedNetPayable.toFixed(2)}, Received: ${netPayableSalary}`
+      //   );
+      // }
 
       // Validation: Paid Amount (should be <= net payable)
-      if (parseFloat(paidAmount) > parseFloat(netPayableSalary)) {
-        throw new Error(
-          `Paid amount (${paidAmount}) cannot exceed net payable salary (${netPayableSalary})`
-        );
-      }
+      // if (parseFloat(paidAmount) > parseFloat(netPayableSalary)) {
+      //   throw new Error(
+      //     `Paid amount (${paidAmount}) cannot exceed net payable salary (${netPayableSalary})`
+      //   );
+      // }
 
       // Validation: Paid Amount (should be >= 0)
       if (parseFloat(paidAmount) < 0) {
@@ -1526,7 +1526,7 @@ const PayrollService = {
           parseFloat(loanDeduction) +
           updatedOtherDeduction;
 
-        const updatedNetPayable = updatedGross - updatedTotalDeductions;
+        const updatedNetPayable = netPayableSalary;
 
         // Update the existing record
         await existingPayroll.update(
