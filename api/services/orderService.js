@@ -100,6 +100,14 @@ const OrderService = {
             // const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
             let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`;
 
+            // For order adjustments, fetch existing order items to handle removed items
+            let existingOrderItems = [];
+            if (orderId) {
+                existingOrderItems = await OrderItem.findAll({
+                    where: { OrderId: orderId },
+                    transaction
+                });
+            }
 
             let order = null;
             if (orderId) {
@@ -149,6 +157,67 @@ const OrderService = {
                 }, { transaction });
             }
 
+            // Identify removed items (items that existed but are not in the new data)
+            // These are items the customer returned, so we need to restore their stock
+            if (orderId && existingOrderItems.length > 0) {
+                const newItemIds = validatedItems
+                    .filter(item => item.orderItemId)
+                    .map(item => item.orderItemId);
+
+                const removedItems = existingOrderItems.filter(
+                    existingItem => !newItemIds.includes(existingItem.id)
+                );
+
+                // Restore stock for removed items
+                for (const removedItem of removedItems) {
+                    const productId = removedItem.ProductId;
+                    const variantId = removedItem.ProductVariantId;
+                    const returnedQuantity = removedItem.quantity;
+
+                    if (variantId) {
+                        const variant = await ProductVariant.findByPk(variantId, { transaction });
+                        if (variant) {
+                            const previousStock = variant.quantity;
+                            const newStock = previousStock + returnedQuantity;
+
+                            await variant.update({ quantity: newStock }, { transaction });
+                            await StockHistory.create({
+                                type: 'adjustment',
+                                quantity: returnedQuantity,
+                                previousStock,
+                                newStock,
+                                ProductId: productId,
+                                ProductVariantId: variantId,
+                                OrderId: order.id,
+                                UserId: userId,
+                                note: `Order ${order.orderNumber} - Item returned (removed from order)`
+                            }, { transaction });
+                        }
+                    } else {
+                        const product = await Product.findByPk(productId, { transaction });
+                        if (product) {
+                            const previousStock = product.stock;
+                            const newStock = previousStock + returnedQuantity;
+
+                            await product.update({ stock: newStock }, { transaction });
+                            await StockHistory.create({
+                                type: 'adjustment',
+                                quantity: returnedQuantity,
+                                previousStock,
+                                newStock,
+                                ProductId: productId,
+                                OrderId: order.id,
+                                UserId: userId,
+                                note: `Order ${order.orderNumber} - Item returned (removed from order)`
+                            }, { transaction });
+                        }
+                    }
+
+                    // Delete the removed order item
+                    await removedItem.destroy({ transaction });
+                }
+            }
+
             // Process order items and update stock
             for (const item of validatedItems) {
                 const {
@@ -166,14 +235,20 @@ const OrderService = {
                     discountAmount
                 } = item;
 
-                // Create order item
+                let stockAdjustment = 0;
+                let previousOrderQuantity = 0;
 
                 if (orderItemId) {
-                    const orderItem = await OrderItem.findByPk(orderItemId, { transaction });
+                    // Updating existing order item
+                    const existingOrderItem = await OrderItem.findByPk(orderItemId, { transaction });
 
-                    if (!orderItem) {
+                    if (!existingOrderItem) {
                         throw new Error(`Order item with ID ${orderItemId} not found`);
                     }
+
+                    // Calculate stock adjustment based on quantity change
+                    previousOrderQuantity = existingOrderItem.quantity;
+                    stockAdjustment = quantity - previousOrderQuantity;
 
                     await OrderItem.update({
                         ProductId: productId,
@@ -188,8 +263,10 @@ const OrderService = {
                         purchasePrice: Number(product?.purchasePrice || 0),
                     }, { transaction, where: { id: orderItemId } });
                 } else {
+                    // Creating new order item
+                    stockAdjustment = quantity;
+
                     await OrderItem.create({
-                        id: orderItemId,
                         OrderId: order.id,
                         ProductId: productId,
                         ProductVariantId: variantId,
@@ -203,34 +280,51 @@ const OrderService = {
                         purchasePrice: Number(product?.purchasePrice || 0),
                     }, { transaction });
                 }
-                // Update stock
-                const newStock = currentStock - quantity;
 
-                if (variantId && variant) {
-                    await variant.update({ quantity: newStock }, { transaction });
-                    await StockHistory.create({
-                        type: 'order',
-                        quantity,
-                        previousStock: currentStock,
-                        newStock,
-                        ProductId: productId,
-                        ProductVariantId: variantId,
-                        OrderId: order.id,
-                        UserId: userId,
-                        note: `Order ${orderNumber}`
-                    }, { transaction });
-                } else {
-                    await product.update({ stock: newStock }, { transaction });
-                    await StockHistory.create({
-                        type: 'order',
-                        quantity,
-                        previousStock: currentStock,
-                        newStock,
-                        ProductId: productId,
-                        OrderId: order.id,
-                        UserId: userId,
-                        note: `Order ${orderNumber}`
-                    }, { transaction });
+                // Update stock based on adjustment
+                // Positive stockAdjustment means we need to reduce stock (more items ordered)
+                // Negative stockAdjustment means we need to increase stock (fewer items ordered)
+                if (stockAdjustment !== 0) {
+                    const newStock = currentStock - stockAdjustment;
+
+                    // Ensure stock never goes negative
+                    if (newStock < 0) {
+                        throw new Error(
+                            `Stock cannot be negative for ${variantId ? 'variant' : 'product'} ${variantId || productId}. ` +
+                            `Current stock: ${currentStock}, Attempted adjustment: ${stockAdjustment}`
+                        );
+                    }
+
+                    const stockNote = orderItemId
+                        ? `Order ${order.orderNumber} - Adjusted (${previousOrderQuantity} → ${quantity})`
+                        : `Order ${order.orderNumber} - New item`;
+
+                    if (variantId && variant) {
+                        await variant.update({ quantity: newStock }, { transaction });
+                        await StockHistory.create({
+                            type: orderItemId ? 'adjustment' : 'order',
+                            quantity: Math.abs(stockAdjustment),
+                            previousStock: currentStock,
+                            newStock,
+                            ProductId: productId,
+                            ProductVariantId: variantId,
+                            OrderId: order.id,
+                            UserId: userId,
+                            note: stockNote
+                        }, { transaction });
+                    } else {
+                        await product.update({ stock: newStock }, { transaction });
+                        await StockHistory.create({
+                            type: orderItemId ? 'adjustment' : 'order',
+                            quantity: Math.abs(stockAdjustment),
+                            previousStock: currentStock,
+                            newStock,
+                            ProductId: productId,
+                            OrderId: order.id,
+                            UserId: userId,
+                            note: stockNote
+                        }, { transaction });
+                    }
                 }
             }
 
