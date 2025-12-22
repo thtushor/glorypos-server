@@ -947,9 +947,29 @@ const PayrollService = {
         throw new Error("Invalid salaryMonth format. Use YYYY-MM.");
       }
 
-      // Step 1: Fetch Employee Base Salary
+      // Step 1: Fetch Employee Base Salary and Joining Date
       const employee = await this.fetchEmployeeBaseSalary(accessibleShopIds, userId);
       const { baseSalary } = employee;
+
+      // Get employee's full details to check joining date
+      const userDetails = await UserRole.findOne({
+        where: { id: userId },
+        attributes: ["id", "fullName", "createdAt"],
+      });
+
+      if (!userDetails) {
+        throw new Error("User not found");
+      }
+
+      // Get joining month in YYYY-MM format
+      const joiningMonth = moment(userDetails.createdAt).format("YYYY-MM");
+
+      // Validate: Cannot calculate payroll for months before joining
+      if (salaryMonth < joiningMonth) {
+        throw new Error(
+          `Cannot calculate payroll for ${salaryMonth}. Employee joined in ${joiningMonth}.`
+        );
+      }
 
       // Step 2: Fetch Advance Salary Records & Calculate Outstanding
       const advanceData = await this.calculateOutstandingAdvance(userId, salaryMonth);
