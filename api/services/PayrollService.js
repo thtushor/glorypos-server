@@ -591,9 +591,9 @@ const PayrollService = {
     const advanceSalaries = await AdvanceSalary.findAll({
       where: {
         userId,
-        status: "APPROVED",
+        status: { [Op.or]: ["APPROVED", "PARTIALLY_REPAID"] },
       },
-      attributes: ["id", "amount", "salaryMonth"],
+      attributes: ["id", "amount", "salaryMonth", "repaidAmount"],
     });
 
     // Calculate total advance taken
@@ -602,18 +602,11 @@ const PayrollService = {
       0
     );
 
-    // Fetch all released payrolls to calculate total advance repaid
-    const releasedPayrolls = await PayrollRelease.findAll({
-      where: {
-        userId,
-        status: "RELEASED",
-      },
-      attributes: ["advanceAmount"],
-    });
-
     // Calculate total advance repaid (from payroll releases)
-    const totalAdvanceRepaid = releasedPayrolls.reduce(
-      (sum, payroll) => sum + parseFloat(payroll.advanceAmount || 0),
+    const totalAdvanceRepaid = advanceSalaries.reduce(
+      (sum, advance) => {
+        return sum + parseFloat(advance.repaidAmount || 0);
+      },
       0
     );
 
@@ -960,6 +953,8 @@ const PayrollService = {
 
       // Step 2: Fetch Advance Salary Records & Calculate Outstanding
       const advanceData = await this.calculateOutstandingAdvance(userId, salaryMonth);
+
+      console.log({ advanceData })
 
       // Step 3: Fetch Attendance Records & Calculate Deductions (Simplified - Days Only)
       const attendanceData = await this.calculateAttendanceDetails(userId, salaryMonth);
@@ -1375,21 +1370,24 @@ const PayrollService = {
       const previousDuesPayments = [];
 
       // Fetch all PENDING payrolls before current month (excluding joining month)
-      const pendingPreviousPayrolls = await PayrollRelease.findAll({
-        where: {
-          userId,
-          salaryMonth: {
-            [Op.lt]: salaryMonth,
-            [Op.ne]: joiningMonth, // Exclude joining month
-          },
-          status: "PENDING",
+      const whereConditions = {
+        userId,
+        status: "PENDING",
+        salaryMonth: {
+          [Op.and]: [
+            { [Op.lt]: salaryMonth },
+            { [Op.gte]: joiningMonth }
+          ]
         },
+      };
+
+      const pendingPreviousPayrolls = await PayrollRelease.findAll({
+        where: whereConditions,
         order: [["salaryMonth", "ASC"]], // Oldest first (FIFO)
         transaction,
       });
 
-
-      console.log({ pendingPreviousPayrolls })
+      console.log({ pendingPreviousPayrolls, salaryMonth, joiningMonth, userId })
 
       // Allocate payment to previous PENDING payrolls first
       for (const payroll of pendingPreviousPayrolls) {
