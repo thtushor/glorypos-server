@@ -1207,9 +1207,9 @@ const OrderService = {
                 const profit = totalRevenue - totalCost;
 
                 return {
-                    name: item.Product.name + (item.ProductVariant ?
-                        ` (${item.ProductVariant.Color?.name || ''} - ${item.ProductVariant.Size?.name || ''})` : ''),
-                    sku: item.ProductVariant ? item.ProductVariant.sku : item.Product.sku,
+                    name: item?.Product?.name + (item?.ProductVariant ?
+                        ` (${item?.ProductVariant?.Color?.name || ''} - ${item?.ProductVariant?.Size?.name || ''})` : ''),
+                    sku: item?.ProductVariant ? item?.ProductVariant?.sku : item?.Product?.sku,
                     totalQuantity,
                     totalRevenue,
                     profit,
@@ -1224,7 +1224,6 @@ const OrderService = {
                 data: formattedItems
             };
         } catch (error) {
-            console.log({ error });
             return {
                 status: false,
                 message: error.isClientError ? error.message : "Failed to retrieve top selling items",
