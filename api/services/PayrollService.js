@@ -971,8 +971,8 @@ const PayrollService = {
 
       // Step 6: Calculate Net Salary after attendance deduction
       // Calculate actual deduction amount based on unpaid leave days
-      const unpaidLeaveDeductionAmount = baseSalary * attendanceData.unpaidLeaveDeductionRatio;
-      const netAttendanceSalary = baseSalary - unpaidLeaveDeductionAmount;
+      const unpaidLeaveDeductionAmount = Math.round(baseSalary * attendanceData.unpaidLeaveDeductionRatio);
+      const netAttendanceSalary = Math.round(baseSalary - unpaidLeaveDeductionAmount);
       const salaryAfterAttendance = Math.max(0, netAttendanceSalary);
 
       // Step 7: Fetch other deductions
