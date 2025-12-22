@@ -1050,8 +1050,6 @@ const PayrollService = {
       // Remaining due = total payable - already paid in current month
       const currentMonthRemainingDue = totalPayable - currentMonthPaidAmount;
 
-      console.log("currentMonthRemainingDue", { currentMonthRemainingDue, currentMonthPaidAmount, totalPayable, currentMonthNetPayable, totalPreviousDues });
-
       // Net payable is the remaining amount to be paid
       const netPayableSalary = Math.max(0, currentMonthRemainingDue);
 
@@ -1351,10 +1349,96 @@ const PayrollService = {
         transaction,
       });
 
+      // Fetch user details to get joining date (using createdAt as joining date)
+      const userDetails = await UserRole.findOne({
+        where: { id: userId },
+        attributes: ["id", "fullName", "createdAt"],
+        transaction,
+      });
+
+      if (!userDetails) {
+        throw new Error("User not found");
+      }
+
+      // Get joining month in YYYY-MM format
+      const joiningMonth = moment(userDetails.createdAt).format("YYYY-MM");
+
       // Calculate previous months' dues using reusable function
       const previousDuesData = await this.calculatePreviousDues(userId, salaryMonth);
       const totalPreviousDues = previousDuesData.totalPreviousDues;
       const hasPreviousDues = previousDuesData.hasPreviousDues;
+
+      // Payment Allocation: Pay previous PENDING dues first (FIFO), then current month
+      let remainingPayment = parseFloat(paidAmount);
+      let allocatedToPreviousDues = 0;
+      let allocatedToCurrentMonth = 0;
+      const previousDuesPayments = [];
+
+      // Fetch all PENDING payrolls before current month (excluding joining month)
+      const pendingPreviousPayrolls = await PayrollRelease.findAll({
+        where: {
+          userId,
+          salaryMonth: {
+            [Op.lt]: salaryMonth,
+            [Op.ne]: joiningMonth, // Exclude joining month
+          },
+          status: "PENDING",
+        },
+        order: [["salaryMonth", "ASC"]], // Oldest first (FIFO)
+        transaction,
+      });
+
+
+      console.log({ pendingPreviousPayrolls })
+
+      // Allocate payment to previous PENDING payrolls first
+      for (const payroll of pendingPreviousPayrolls) {
+        if (remainingPayment <= 0) break;
+
+        console.log({ payroll, remainingPayment })
+
+        const netPayable = parseFloat(payroll.netPayableSalary || 0);
+        const alreadyPaid = parseFloat(payroll.paidAmount || 0);
+        const dueAmount = netPayable - alreadyPaid;
+
+        if (dueAmount <= 0.01) continue; // Skip if already paid
+
+        const paymentForThisMonth = Math.min(remainingPayment, dueAmount);
+        const newPaidAmount = alreadyPaid + paymentForThisMonth;
+        const newDueAmount = netPayable - newPaidAmount;
+
+        // Determine if this payroll is now fully paid
+        const isFullyPaid = newDueAmount <= 0.01;
+        const newStatus = isFullyPaid ? "RELEASED" : "PENDING";
+
+        allocatedToPreviousDues += paymentForThisMonth;
+        remainingPayment -= paymentForThisMonth;
+
+        previousDuesPayments.push({
+          salaryMonth: payroll.salaryMonth,
+          netPayable,
+          previouslyPaid: alreadyPaid,
+          paidAmount: paymentForThisMonth,
+          newTotalPaid: newPaidAmount,
+          remainingDue: newDueAmount,
+          statusChanged: payroll.status !== newStatus,
+          newStatus,
+        });
+
+        // Update the previous payroll record
+        await payroll.update(
+          {
+            paidAmount: newPaidAmount,
+            status: newStatus,
+            releaseDate: isFullyPaid ? new Date() : payroll.releaseDate,
+            releasedBy: isFullyPaid ? adminId : payroll.releasedBy,
+          },
+          { transaction }
+        );
+      }
+
+      // Remaining payment goes to current month
+      allocatedToCurrentMonth = remainingPayment;
 
       // Calculate the expected payroll details using the service
       const calculatedResult = await this.calculateMonthlyPayrollDetails(
@@ -1459,6 +1543,14 @@ const PayrollService = {
         throw new Error("Paid amount cannot be negative");
       }
 
+      // Validation: Paid Amount should not exceed Net Payable Salary
+      // if (parseFloat(paidAmount) > parseFloat(netPayableSalary)) {
+      //   throw new Error(
+      //     `Paid amount (${parseFloat(paidAmount).toFixed(2)}) cannot exceed net payable salary (${parseFloat(netPayableSalary).toFixed(2)}). ` +
+      //     `Difference: ${(parseFloat(paidAmount) - parseFloat(netPayableSalary)).toFixed(2)}`
+      //   );
+      // }
+
       // Calculate due amount
       const dueAmount = parseFloat(netPayableSalary) - parseFloat(paidAmount);
 
@@ -1494,6 +1586,14 @@ const PayrollService = {
           due: dueAmount,
         },
 
+        // Payment Allocation Details
+        paymentAllocation: {
+          totalPaidAmount: parseFloat(paidAmount),
+          allocatedToPreviousDues,
+          allocatedToCurrentMonth,
+          previousDuesPayments,
+        },
+
         // Include original calculation snapshot
         originalCalculation: calculated.calculationSnapshot,
       };
@@ -1505,7 +1605,7 @@ const PayrollService = {
         // UPDATE EXISTING RECORD - Increment editable fields
         isUpdate = true;
 
-        const updatedPaidAmount = parseFloat(existingPayroll.paidAmount || 0) + parseFloat(paidAmount);
+        const updatedPaidAmount = parseFloat(existingPayroll.paidAmount || 0) + allocatedToCurrentMonth;
         const updatedAdvanceAmount = parseFloat(existingPayroll.advanceAmount || 0) + parseFloat(advanceAmount);
         const updatedBonusAmount = parseFloat(existingPayroll.bonusAmount || 0) + parseFloat(bonusAmount);
         const updatedOvertimeAmount = parseFloat(existingPayroll.overtimeAmount || 0) + parseFloat(overtimeAmount);
@@ -1528,6 +1628,11 @@ const PayrollService = {
 
         const updatedNetPayable = netPayableSalary;
 
+        // Determine status: PENDING if there's remaining due, RELEASED if fully paid
+        const updatedDueAmount = parseFloat(updatedNetPayable) - updatedPaidAmount;
+        const payrollStatus = updatedDueAmount > 0.01 ? "PENDING" : "RELEASED";
+        const releaseDate = payrollStatus === "RELEASED" ? new Date() : (existingPayroll.releaseDate || null);
+
         // Update the existing record
         await existingPayroll.update(
           {
@@ -1542,9 +1647,9 @@ const PayrollService = {
             netPayableSalary: updatedNetPayable,
             paidAmount: updatedPaidAmount,
             shopId,
-            status: "RELEASED",
-            releaseDate: new Date(),
-            releasedBy: adminId,
+            status: payrollStatus,
+            releaseDate: releaseDate,
+            releasedBy: payrollStatus === "RELEASED" ? adminId : existingPayroll.releasedBy,
             calculationSnapshot: {
               ...enhancedSnapshot,
               updateHistory: [
@@ -1553,7 +1658,7 @@ const PayrollService = {
                   updatedAt: new Date(),
                   updatedBy: adminId,
                   incrementedFields: {
-                    paidAmount: parseFloat(paidAmount),
+                    paidAmount: allocatedToCurrentMonth,
                     advanceAmount: parseFloat(advanceAmount),
                     bonusAmount: parseFloat(bonusAmount),
                     overtimeAmount: parseFloat(overtimeAmount),
@@ -1570,6 +1675,11 @@ const PayrollService = {
         payrollRelease = existingPayroll;
       } else {
         // CREATE NEW RECORD
+        // Determine status: PENDING if there's remaining due, RELEASED if fully paid
+        const currentMonthDue = parseFloat(netPayableSalary) - allocatedToCurrentMonth;
+        const payrollStatus = currentMonthDue > 0.01 ? "PENDING" : "RELEASED";
+        const releaseDate = payrollStatus === "RELEASED" ? new Date() : null;
+
         payrollRelease = await PayrollRelease.create(
           {
             userId,
@@ -1583,11 +1693,11 @@ const PayrollService = {
             overtimeAmount: parseFloat(overtimeAmount),
             otherDeduction: parseFloat(otherDeduction),
             netPayableSalary: parseFloat(netPayableSalary),
-            paidAmount: parseFloat(paidAmount),
+            paidAmount: allocatedToCurrentMonth,
             shopId,
-            status: "RELEASED",
-            releaseDate: new Date(),
-            releasedBy: adminId,
+            status: payrollStatus,
+            releaseDate: releaseDate,
+            releasedBy: payrollStatus === "RELEASED" ? adminId : null,
             calculationSnapshot: enhancedSnapshot,
           },
           { transaction }
@@ -1671,6 +1781,12 @@ const PayrollService = {
           dueAmount,
           validationPassed: true,
           isUpdate,
+          paymentAllocation: {
+            totalPaidAmount: parseFloat(paidAmount),
+            allocatedToPreviousDues,
+            allocatedToCurrentMonth,
+            previousDuesPayments,
+          },
         },
       };
     } catch (error) {
