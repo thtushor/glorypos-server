@@ -1203,7 +1203,7 @@ const OrderService = {
             const formattedItems = items.map(item => {
                 const totalQuantity = parseInt(item.dataValues.totalQuantity);
                 const totalRevenue = parseFloat(item.dataValues.totalRevenue);
-                const totalCost = Number(item.Product.purchasePrice || 0) * totalQuantity;
+                const totalCost = Number(item?.Product?.purchasePrice || 0) * totalQuantity;
                 const profit = totalRevenue - totalCost;
 
                 return {
