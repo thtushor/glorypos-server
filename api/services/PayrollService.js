@@ -979,20 +979,39 @@ const PayrollService = {
       // Step 3: Fetch Attendance Records & Calculate Deductions (Simplified - Days Only)
       const attendanceData = await this.calculateAttendanceDetails(userId, salaryMonth);
 
+      // Pro-rate base salary for joining month
+      let effectiveBaseSalary = baseSalary;
+      let isJoiningMonth = false;
+
+      if (salaryMonth === joiningMonth) {
+        isJoiningMonth = true;
+        // Calculate total days in the month
+        const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+        const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+        const totalDaysInMonth = monthEnd.date();
+
+        // Calculate working days from joining date to end of month
+        const joiningDate = moment(userDetails.createdAt);
+        const daysWorked = monthEnd.diff(joiningDate, "days") + 1; // +1 to include joining day
+
+        // Pro-rate the base salary
+        effectiveBaseSalary = Math.round((baseSalary / totalDaysInMonth) * daysWorked);
+      }
+
       // Step 4: Fetch Sales & Commission Data
       const commissionData = await this.calculateSalesAndCommission(userId, salaryMonth);
 
-      // Step 5: Calculate Gross Salary
+      // Step 5: Calculate Gross Salary (using effective base salary)
       const grossSalary = this.calculateGrossSalary(
-        baseSalary,
+        effectiveBaseSalary,
         commissionData.totalCommission,
         options.bonusAmount || 0
       );
 
       // Step 6: Calculate Net Salary after attendance deduction
-      // Calculate actual deduction amount based on unpaid leave days
-      const unpaidLeaveDeductionAmount = Math.round(baseSalary * attendanceData.unpaidLeaveDeductionRatio);
-      const netAttendanceSalary = Math.round(baseSalary - unpaidLeaveDeductionAmount);
+      // Calculate actual deduction amount based on unpaid leave days (using effective base salary)
+      const unpaidLeaveDeductionAmount = Math.round(effectiveBaseSalary * attendanceData.unpaidLeaveDeductionRatio);
+      const netAttendanceSalary = Math.round(effectiveBaseSalary - unpaidLeaveDeductionAmount);
       const salaryAfterAttendance = Math.max(0, netAttendanceSalary);
 
       // Step 7: Fetch other deductions
@@ -1076,7 +1095,9 @@ const PayrollService = {
         userId: employee.userId,
         fullName: employee.fullName,
         salaryMonth,
-        baseSalary,
+        baseSalary, // Original monthly base salary
+        effectiveBaseSalary, // Pro-rated base salary (same as baseSalary if not joining month)
+        isJoiningMonth, // Flag to indicate if this is the joining month
 
         // Attendance Details (Days Only)
         totalWorkingDays: attendanceData.totalWorkingDays,
