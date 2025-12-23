@@ -31,6 +31,13 @@ router.get('/single-order/:orderId', AuthService.authenticate, addShopAccess, re
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+// Delete order by ID
+router.post('/delete/:orderId', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await OrderService.delete(req.params.orderId, req.accessibleShopIds);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
+
 // Get dashboard statistics
 router.get('/dashboard', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const result = await OrderService.getDashboardStats(req.accessibleShopIds, req.query);

@@ -366,6 +366,8 @@ const OrderService = {
         }
     },
 
+
+
     async getAll(query = {}, accessibleShopIds) {
         try {
             const page = parseInt(query.page) || 1;
@@ -539,16 +541,56 @@ const OrderService = {
         return { status: true, message: 'Order retrieved successfully', data: order };
     },
 
-    async delete(orderId) {
+    async delete(orderId, accessibleShopIds = []) {
+        const transaction = await sequelize.transaction();
+
         try {
-            const order = await Order.findByPk(orderId);
+            // Find the order first
+            const order = await Order.findByPk(orderId, { transaction });
+
             if (!order) {
+                await transaction.rollback();
                 return { status: false, message: 'Order not found' };
             }
-            await order.destroy();
-            return { status: true, message: 'Order deleted successfully' };
+
+            // Check shop access if accessibleShopIds is provided
+            if (accessibleShopIds && accessibleShopIds.length > 0) {
+                if (!accessibleShopIds.includes(order.UserId)) {
+                    await transaction.rollback();
+                    return { status: false, message: 'You do not have permission to delete this order' };
+                }
+            }
+
+            // Delete all associated StuffCommissions
+            const deletedCommissions = await StuffCommission.destroy({
+                where: { OrderId: orderId },
+                transaction
+            });
+
+            // Delete all associated OrderItems
+            const deletedItems = await OrderItem.destroy({
+                where: { OrderId: orderId },
+                transaction
+            });
+
+            // Delete the order itself
+            await order.destroy({ transaction });
+
+            // Commit the transaction
+            await transaction.commit();
+
+            return {
+                status: true,
+                message: 'Order deleted successfully',
+                data: {
+                    deletedOrder: orderId,
+                    deletedItems,
+                    deletedCommissions
+                }
+            };
         } catch (error) {
-            return { status: false, message: 'Failed to delete order', error };
+            await transaction.rollback();
+            return { status: false, message: 'Failed to delete order', error: error.message };
         }
     },
 
