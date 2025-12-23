@@ -13,6 +13,14 @@ const UserRole = sequelize.define("UserRole", {
   },
   phone: { type: Sequelize.STRING, allowNull: true },
   password: { type: Sequelize.STRING, allowNull: false },
+  resetTokenExpiry: {
+    type: Sequelize.DATE,
+    defaultValue: null
+  },
+  resetToken: {
+    type: Sequelize.STRING,
+    defaultValue: null
+  },
   role: {
     type: Sequelize.ENUM("manager", "staff", "cashier"),
     allowNull: false,

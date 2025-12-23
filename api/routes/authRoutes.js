@@ -100,7 +100,7 @@ router.post('/verify-email', requestHandler(null, async (req, res) => {
 }));
 // Password reset routes
 router.post('/request-reset', requestHandler(null, async (req, res) => {
-    const result = await AuthService.requestPasswordReset(req.body.email);
+    const result = await AuthService.requestPasswordReset(req.body.email, req?.body?.userId);
     res.status(200).json(result);
 }));
 

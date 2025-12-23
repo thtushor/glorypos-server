@@ -349,28 +349,73 @@ const AuthService = {
         }
     },
 
-    async requestPasswordReset(email) {
+    async requestPasswordReset(email, reqUserId) {
         try {
+
+            let reqUser;
+
+            if (Number(reqUserId)) {
+                reqUser = await User.findByPk(Number(reqUserId));
+            }
+
             const user = await User.findOne({ where: { email } });
 
-            if (!user) {
+            const childUser = await UserRole.findOne({ where: { email } });
+
+            if (!user && !childUser) {
                 throw new Error('User not found');
             }
 
+
             const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
+
+            const isEligibleForSendResetLink = reqUser ? (reqUser?.accountType === "super admin" || !Boolean(reqUser?.parentId)) : false;
+
+            if (reqUserId && !isEligibleForSendResetLink) {
+                return {
+                    status: false,
+                    message: 'You are not eligible for password reset',
+                    data: null
+                };
+            }
+
 
             // Generate reset token (always, for admin use)
             const resetToken = jwt.sign(
-                { userId: user.id },
+                (user?.id ? { userId: user?.id } : { userRoleId: childUser?.id }),
                 process.env.JWT_SECRET,
                 { expiresIn: '1h' }
             );
 
+
+            const resetLink = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+
             // Save reset token and expiry in database
-            await user.update({
-                resetToken: resetToken,
-                resetTokenExpiry: new Date(Date.now() + 3600000) // 1 hour from now
-            });
+
+            if (user) {
+                await user.update({
+                    resetToken: resetToken,
+                    resetTokenExpiry: new Date(Date.now() + 3600000) // 1 hour from now
+                });
+            }
+
+            if (childUser) {
+                await childUser.update({
+                    resetToken: resetToken,
+                    resetTokenExpiry: new Date(Date.now() + 3600000) // 1 hour from now
+                });
+            }
+
+            if (isEligibleForSendResetLink && reqUserId) {
+
+                return {
+                    status: true,
+                    message: 'Password reset link requested successfully',
+                    data: {
+                        resetLink
+                    }
+                };
+            }
 
             // Send reset email only if email service is enabled
             if (isEmailServiceEnabled) {
@@ -407,14 +452,24 @@ const AuthService = {
                 }
             });
 
-            if (!user) {
+            const childUser = await UserRole.findOne({
+                where: {
+                    id: decoded.userRoleId,
+                    resetToken: token,
+                    resetTokenExpiry: {
+                        [Op.gt]: new Date()
+                    }
+                }
+            });
+
+            if (!user && !childUser) {
                 throw new Error('Invalid or expired reset token');
             }
 
             return {
                 status: true,
                 message: 'Token verified successfully',
-                data: { userId: user.id }
+                data: { userId: user?.id, userRoleId: childUser?.id }
             };
         } catch (error) {
             throw error;
@@ -424,23 +479,51 @@ const AuthService = {
     async resetPassword(token, newPassword) {
         try {
             // Verify token first
-            const { data: { userId } } = await this.verifyResetToken(token);
+            const { data: { userId, userRoleId } } = await this.verifyResetToken(token);
 
             const user = await User.findByPk(userId);
+
+            const childUser = await UserRole.findByPk(userRoleId);
+
+            if (!user && !childUser) {
+                throw new Error('Invalid or expired reset token');
+            }
 
             // Hash new password
             const hashedPassword = await bcrypt.hash(newPassword, 10);
 
             // Update password and clear reset token
-            await user.update({
-                password: hashedPassword,
-                resetToken: null,
-                resetTokenExpiry: null
-            });
+
+            if (user) {
+                await user.update({
+                    password: hashedPassword,
+                    resetToken: null,
+                    resetTokenExpiry: null
+                });
+
+                return {
+                    status: true,
+                    message: 'Password reset successful',
+                    data: null
+                };
+            }
+
+            if (childUser) {
+                await childUser.update({
+                    password: hashedPassword,
+                    resetToken: null,
+                    resetTokenExpiry: null
+                });
+                return {
+                    status: true,
+                    message: 'Password reset successful',
+                    data: null
+                };
+            }
 
             return {
-                status: true,
-                message: 'Password reset successful',
+                status: false,
+                message: 'Invalid or expired reset token',
                 data: null
             };
         } catch (error) {
@@ -508,7 +591,14 @@ const AuthService = {
                 status: true,
                 message: "Users retrieved successfully",
                 data: {
-                    users: rows,
+                    users: rows.map((item) => {
+                        return {
+                            ...item,
+                            password: undefined,
+                            resetToken: undefined,
+                            resetTokenExpiry: undefined,
+                        }
+                    }),
                     pagination: {
                         page,
                         pageSize,
