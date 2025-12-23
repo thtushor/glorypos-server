@@ -332,15 +332,7 @@ const AuthService = {
 
             const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
 
-            if (!isEmailServiceEnabled) {
-                return {
-                    status: true,
-                    message: 'Password reset is currently unavailable. Please contact customer support or admin for assistance with resetting your password.',
-                    data: null
-                };
-            }
-
-            // Generate reset token
+            // Generate reset token (always, for admin use)
             const resetToken = jwt.sign(
                 { userId: user.id },
                 process.env.JWT_SECRET,
@@ -353,14 +345,21 @@ const AuthService = {
                 resetTokenExpiry: new Date(Date.now() + 3600000) // 1 hour from now
             });
 
-            // Send reset email
-            await EmailService.sendResetPasswordEmail(email, resetToken);
-
-            return {
-                status: true,
-                message: 'Password reset link sent to your email',
-                data: null
-            };
+            // Send reset email only if email service is enabled
+            if (isEmailServiceEnabled) {
+                await EmailService.sendResetPasswordEmail(email, resetToken);
+                return {
+                    status: true,
+                    message: 'Password reset link sent to your email',
+                    data: null
+                };
+            } else {
+                return {
+                    status: true,
+                    message: 'Password reset request received. Please contact customer support or admin for assistance with resetting your password.',
+                    data: null
+                };
+            }
         } catch (error) {
             throw error;
         }
