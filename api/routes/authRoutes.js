@@ -66,7 +66,7 @@ router.get('/single-user/:id', AuthService.authenticate, requestHandler(null, as
 
 router.post('/profile', AuthService.authenticate, requestHandler(null, async (req, res) => {
     // Use authenticated user's ID from req.user (set by authenticate middleware)
-    const userId = req.user?.id;
+    const userId = req.body?.userId;
     const result = await AuthService.updateProfile(userId, req.body);
     res.status(200).json(result);
 }));

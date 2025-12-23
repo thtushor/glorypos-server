@@ -232,8 +232,29 @@ const AuthService = {
                     }
                 })
 
-                if (isExistSuperAdmin) {
+                if (isExistSuperAdmin && isExistSuperAdmin.id !== userId) {
                     return { status: false, message: "Super admin already exist", data: null };
+                }
+            }
+
+
+            // Check if email is being changed and if it's already taken by another user
+            if (updateData.email && updateData.email !== user.email) {
+                const existingUserWithEmail = await User.findOne({
+                    where: { email: updateData.email }
+                });
+                if (existingUserWithEmail) {
+                    return { status: false, message: "Email is already in use by another user", data: null };
+                }
+            }
+
+            // Check if phone number is being changed and if it's already taken by another user
+            if (updateData.phoneNumber && updateData.phoneNumber !== user.phoneNumber) {
+                const existingUserWithPhone = await User.findOne({
+                    where: { phoneNumber: updateData.phoneNumber }
+                });
+                if (existingUserWithPhone) {
+                    return { status: false, message: "Phone number is already in use by another user", data: null };
                 }
             }
 
@@ -242,8 +263,6 @@ const AuthService = {
                 // Convert to boolean: handles true, false, 1, 0, "true", "false"
                 updateData.isVerified = Boolean(updateData.isVerified === true || updateData.isVerified === 1 || updateData.isVerified === "true");
             }
-
-            console.log({ updateData })
 
             await user.update(updateData);
 
