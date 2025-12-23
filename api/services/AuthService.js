@@ -366,15 +366,43 @@ const AuthService = {
                 throw new Error('User not found');
             }
 
-
             const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
 
-            const isEligibleForSendResetLink = reqUser ? (reqUser?.accountType === "super admin" || !Boolean(reqUser?.parentId)) : false;
+            // Authorization logic
+            let isEligibleForSendResetLink = false;
+
+            if (reqUserId && reqUser) {
+                // Case 1: Super admin can reset anyone's password
+                if (reqUser.accountType === "super admin") {
+                    isEligibleForSendResetLink = true;
+                }
+                // Case 2: For regular User (not child)
+                else if (user) {
+                    // If target user has no parent (is a shop owner)
+                    if (!user.parent_id) {
+                        // Shop owner can only reset their own password
+                        isEligibleForSendResetLink = (reqUser.id === user.id);
+                    }
+                    // If target user has a parent (is a sub-shop)
+                    else {
+                        // Parent can reset their child's password
+                        isEligibleForSendResetLink = (reqUser.id === user.parent_id);
+                    }
+                }
+                // Case 3: For child user (UserRole)
+                else if (childUser) {
+                    // Only the parent shop owner can reset child user's password
+                    isEligibleForSendResetLink = (reqUser.id === childUser.parentUserId);
+                }
+            } else {
+                // No reqUserId means public password reset request (via email)
+                isEligibleForSendResetLink = false;
+            }
 
             if (reqUserId && !isEligibleForSendResetLink) {
                 return {
                     status: false,
-                    message: 'You are not eligible for password reset',
+                    message: 'You are not authorized to reset this password',
                     data: null
                 };
             }
