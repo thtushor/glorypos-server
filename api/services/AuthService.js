@@ -260,7 +260,6 @@ const AuthService = {
 
 
             if (updateData.hasOwnProperty('isVerified')) {
-                // Convert to boolean: handles true, false, 1, 0, "true", "false"
                 updateData.isVerified = Boolean(updateData.isVerified === true || updateData.isVerified === 1 || updateData.isVerified === "true");
             }
 
