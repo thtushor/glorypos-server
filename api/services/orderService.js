@@ -545,8 +545,17 @@ const OrderService = {
         const transaction = await sequelize.transaction();
 
         try {
-            // Find the order first
-            const order = await Order.findByPk(orderId, { transaction });
+            // Find the order with its items first
+            const order = await Order.findByPk(orderId, {
+                include: [{
+                    model: OrderItem,
+                    include: [
+                        { model: Product },
+                        { model: ProductVariant }
+                    ]
+                }],
+                transaction
+            });
 
             if (!order) {
                 await transaction.rollback();
@@ -558,6 +567,59 @@ const OrderService = {
                 if (!accessibleShopIds.includes(order.UserId)) {
                     await transaction.rollback();
                     return { status: false, message: 'You do not have permission to delete this order' };
+                }
+            }
+
+            // Restore stock for all order items
+            if (order.OrderItems && order.OrderItems.length > 0) {
+                for (const orderItem of order.OrderItems) {
+                    const productId = orderItem.ProductId;
+                    const variantId = orderItem.ProductVariantId;
+                    const quantity = orderItem.quantity;
+
+                    // Restore stock for variant or product
+                    if (variantId) {
+                        const variant = await ProductVariant.findByPk(variantId, { transaction });
+                        if (variant) {
+                            const previousStock = variant.quantity;
+                            const newStock = previousStock + quantity;
+
+                            await variant.update({ quantity: newStock }, { transaction });
+
+                            // Create stock history record
+                            await StockHistory.create({
+                                type: 'adjustment',
+                                quantity: quantity,
+                                previousStock,
+                                newStock,
+                                ProductId: productId,
+                                ProductVariantId: variantId,
+                                OrderId: order.id,
+                                UserId: order.UserId,
+                                note: `Order ${order.orderNumber} deleted - Stock restored`
+                            }, { transaction });
+                        }
+                    } else if (productId) {
+                        const product = await Product.findByPk(productId, { transaction });
+                        if (product) {
+                            const previousStock = product.stock;
+                            const newStock = previousStock + quantity;
+
+                            await product.update({ stock: newStock }, { transaction });
+
+                            // Create stock history record
+                            await StockHistory.create({
+                                type: 'adjustment',
+                                quantity: quantity,
+                                previousStock,
+                                newStock,
+                                ProductId: productId,
+                                OrderId: order.id,
+                                UserId: order.UserId,
+                                note: `Order ${order.orderNumber} deleted - Stock restored`
+                            }, { transaction });
+                        }
+                    }
                 }
             }
 
@@ -581,11 +643,12 @@ const OrderService = {
 
             return {
                 status: true,
-                message: 'Order deleted successfully',
+                message: 'Order deleted successfully and stock restored',
                 data: {
                     deletedOrder: orderId,
                     deletedItems,
-                    deletedCommissions
+                    deletedCommissions,
+                    stockRestored: order.OrderItems.length
                 }
             };
         } catch (error) {
