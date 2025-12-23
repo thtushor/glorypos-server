@@ -28,9 +28,10 @@ const AuthService = {
             isVerified: false
         });
 
+        // Check if email service is enabled
+        const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
 
-
-        if (!userData?.ignoreEmailVerification) {
+        if (!userData?.ignoreEmailVerification && isEmailServiceEnabled) {
             try {
                 await EmailService.sendVerificationEmail(user)
             } catch (error) {
@@ -38,8 +39,11 @@ const AuthService = {
             }
         }
 
+        const message = isEmailServiceEnabled
+            ? "Registration successful. Please check your email to verify your account."
+            : "Registration successful. Please contact customer support or admin to activate your account.";
 
-        return { status: true, message: "Registration successful. Please check your email to verify your account.", data: user };
+        return { status: true, message, data: user };
     },
 
     async registerSuperAdmin(userData) {
@@ -143,10 +147,14 @@ const AuthService = {
 
 
             if (user && !user.isVerified) {
+                const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
 
-                await EmailService.sendVerificationEmail(user)
-                // throw new Error('Please verify your email before logging in');
-                return { status: false, message: "Please verify your email before logging in. We have sent you a new verification email.", data: null };
+                if (isEmailServiceEnabled) {
+                    await EmailService.sendVerificationEmail(user)
+                    return { status: false, message: "Please verify your email before logging in. We have sent you a new verification email.", data: null };
+                } else {
+                    return { status: false, message: "Your account is not verified. Please contact customer support or admin to activate your account.", data: null };
+                }
             }
 
 
@@ -320,6 +328,16 @@ const AuthService = {
 
             if (!user) {
                 throw new Error('User not found');
+            }
+
+            const isEmailServiceEnabled = process.env.ENABLE_EMAIL_SERVICE === 'true';
+
+            if (!isEmailServiceEnabled) {
+                return {
+                    status: true,
+                    message: 'Password reset is currently unavailable. Please contact customer support or admin for assistance with resetting your password.',
+                    data: null
+                };
             }
 
             // Generate reset token
