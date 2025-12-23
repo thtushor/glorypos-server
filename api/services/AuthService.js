@@ -639,14 +639,22 @@ const AuthService = {
 
     async getSubShops(query, userId, accessibleShopIds = []) {
         try {
+            console.log({ accessibleShopIds })
             const page = parseInt(query.page) || 1;
             const pageSize = parseInt(query.pageSize) || 10;
             const offset = (page - 1) * pageSize;
+            const showParentShop = query.showParentShop || false;
 
             // Build where clause - filter by parent_id
             const whereClause = {
                 // parent_id: undefined
             };
+
+            // if (!showParentShop) {
+            //     whereClause.parent_id = {
+            //         [Op.ne]: null
+            //     };
+            // }
 
             // Apply shop access filter - only return shops the user has access to
             if (accessibleShopIds && accessibleShopIds.length > 0) {
@@ -684,7 +692,8 @@ const AuthService = {
                         },
                         include: [
                             {
-                                model: SubscriptionPlan
+                                model: SubscriptionPlan,
+                                required: false
                             }
                         ]
                     }
@@ -696,12 +705,12 @@ const AuthService = {
 
             const modifiedRows = await Promise.all(rows.map(async (row) => {
                 const parentUser = await User.findByPk(row.parent_id);
-                if (parentUser) {
-                    return {
-                        ...row.dataValues,
-                        parent: parentUser.dataValues
-                    }
+
+                return {
+                    ...row.dataValues,
+                    parent: parentUser ? parentUser?.dataValues : undefined
                 }
+
             }));
 
             const totalPages = Math.ceil(count / pageSize);
