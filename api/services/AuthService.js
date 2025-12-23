@@ -237,11 +237,16 @@ const AuthService = {
                 }
             }
 
-            updateData.isVerified = updateData.isVerified === true ? 1 : 0;
+
+            if (updateData.hasOwnProperty('isVerified')) {
+                // Convert to boolean: handles true, false, 1, 0, "true", "false"
+                updateData.isVerified = Boolean(updateData.isVerified === true || updateData.isVerified === 1 || updateData.isVerified === "true");
+            }
 
             console.log({ updateData })
 
             await user.update(updateData);
+
             return { status: true, message: "Profile updated successfully", data: user };
         } catch (error) {
             return { status: false, message: "Failed to update profile", data: null, error };
