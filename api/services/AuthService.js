@@ -442,7 +442,7 @@ const AuthService = {
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            const user = await User.findOne({
+            const user = decoded.userId ? await User.findOne({
                 where: {
                     id: decoded.userId,
                     resetToken: token,
@@ -450,9 +450,9 @@ const AuthService = {
                         [Op.gt]: new Date()
                     }
                 }
-            });
+            }) : null;
 
-            const childUser = await UserRole.findOne({
+            const childUser = decoded.userRoleId ? await UserRole.findOne({
                 where: {
                     id: decoded.userRoleId,
                     resetToken: token,
@@ -460,7 +460,7 @@ const AuthService = {
                         [Op.gt]: new Date()
                     }
                 }
-            });
+            }) : null;
 
             if (!user && !childUser) {
                 throw new Error('Invalid or expired reset token');
@@ -591,14 +591,7 @@ const AuthService = {
                 status: true,
                 message: "Users retrieved successfully",
                 data: {
-                    users: rows.map((item) => {
-                        return {
-                            ...item,
-                            password: undefined,
-                            resetToken: undefined,
-                            resetTokenExpiry: undefined,
-                        }
-                    }),
+                    users: rows,
                     pagination: {
                         page,
                         pageSize,
