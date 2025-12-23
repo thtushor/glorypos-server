@@ -237,6 +237,10 @@ const AuthService = {
                 }
             }
 
+            updateData.isVerified = updateData.isVerified === true ? 1 : 0;
+
+            console.log({ updateData })
+
             await user.update(updateData);
             return { status: true, message: "Profile updated successfully", data: user };
         } catch (error) {
