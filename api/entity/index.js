@@ -37,66 +37,66 @@ User.hasMany(UserSubscription);
 
 // === USER & USERROLE ===
 User.hasMany(UserRole, { as: "childUsers", foreignKey: "parentUserId" });
-UserRole.belongsTo(User, { as: "parent", foreignKey: "parentUserId" });
+UserRole.belongsTo(User, { as: "parent", foreignKey: { name: "parentUserId", allowNull: true }, constraints: false });
 
 // old user & userrole associations
 // User.hasMany(UserRole, { as: "childUsers", foreignKey: "parentUserId" });
 // User.hasOne(UserRole, { as: "roleInfo", foreignKey: "userId" });
 
 // Parent-Child Shop Associations
-User.belongsTo(User, { as: "parent", foreignKey: "parent_id" });
+User.belongsTo(User, { as: "parent", foreignKey: { name: "parent_id", allowNull: true }, constraints: false });
 User.hasMany(User, { as: "children", foreignKey: "parent_id" });
 
 // Product Associations
-Product.belongsTo(User);
-Product.belongsTo(Category);
-Product.belongsTo(Brand);
-Product.belongsTo(Unit);
-Product.belongsTo(Size);
-Product.belongsTo(Color);
+Product.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
+Product.belongsTo(Category, { foreignKey: { allowNull: true }, constraints: false });
+Product.belongsTo(Brand, { foreignKey: { allowNull: true }, constraints: false });
+Product.belongsTo(Unit, { foreignKey: { allowNull: true }, constraints: false });
+Product.belongsTo(Size, { foreignKey: { allowNull: true }, constraints: false });
+Product.belongsTo(Color, { foreignKey: { allowNull: true }, constraints: false });
 
 // Category Associations
-Category.belongsTo(User);
+Category.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 Category.hasMany(Product);
 
 // Brand Associations
-Brand.belongsTo(User);
+Brand.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 Brand.hasMany(Product);
 
 // Unit Associations
-Unit.belongsTo(User);
+Unit.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 Unit.hasMany(Product);
 
 // Color & Size Associations
-Color.belongsTo(User);
-Size.belongsTo(User);
+Color.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
+Size.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 
 // Product Variant Associations
 Product.hasMany(ProductVariant);
-ProductVariant.belongsTo(Product);
-ProductVariant.belongsTo(Color);
-ProductVariant.belongsTo(Size);
+ProductVariant.belongsTo(Product, { foreignKey: { allowNull: true }, constraints: false });
+ProductVariant.belongsTo(Color, { foreignKey: { allowNull: true }, constraints: false });
+ProductVariant.belongsTo(Size, { foreignKey: { allowNull: true }, constraints: false });
 
 // Order Associations
-Order.belongsTo(User);
+Order.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 Order.hasMany(OrderItem);
-OrderItem.belongsTo(Order);
+OrderItem.belongsTo(Order, { foreignKey: { allowNull: true }, constraints: false });
 Order.hasMany(StuffCommission, { foreignKey: "OrderId", as: "commissions" });
-StuffCommission.belongsTo(Order, { foreignKey: "OrderId", as: "order" });
+StuffCommission.belongsTo(Order, { foreignKey: { name: "OrderId", allowNull: true }, as: "order", constraints: false });
 
 // OrderItem Associations
-OrderItem.belongsTo(Product);
-OrderItem.belongsTo(ProductVariant);
+OrderItem.belongsTo(Product, { foreignKey: { allowNull: true }, constraints: false });
+OrderItem.belongsTo(ProductVariant, { foreignKey: { allowNull: true }, constraints: false });
 
 // StockHistory Associations
-StockHistory.belongsTo(Product);
-StockHistory.belongsTo(ProductVariant);
-StockHistory.belongsTo(Order);
-StockHistory.belongsTo(User);
+StockHistory.belongsTo(Product, { foreignKey: { allowNull: true }, constraints: false });
+StockHistory.belongsTo(ProductVariant, { foreignKey: { allowNull: true }, constraints: false });
+StockHistory.belongsTo(Order, { foreignKey: { allowNull: true }, constraints: false });
+StockHistory.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
 
 // UserSubscription Associations
-UserSubscription.belongsTo(User);
-UserSubscription.belongsTo(SubscriptionPlan);
+UserSubscription.belongsTo(User, { foreignKey: { allowNull: true }, constraints: false });
+UserSubscription.belongsTo(SubscriptionPlan, { foreignKey: { allowNull: true }, constraints: false });
 
 // SubscriptionPlan Associations
 SubscriptionPlan.hasMany(UserSubscription);
@@ -108,26 +108,29 @@ UserRole.hasMany(StuffCommission, {
   as: "commissions",
 });
 StuffCommission.belongsTo(UserRole, {
-  foreignKey: "UserRoleId",
+  foreignKey: { name: "UserRoleId", allowNull: true },
   as: "staff",
+  constraints: false
 });
 User.hasMany(StuffCommission, {
   foreignKey: "UserId",
   as: "staffCommissionRecords",
 });
 StuffCommission.belongsTo(User, {
-  foreignKey: "UserId",
+  foreignKey: { name: "UserId", allowNull: true },
   as: "shop",
+  constraints: false
 });
 
 // === PAYROLL ASSOCIATIONS ===
 UserRole.hasMany(Attendance, { foreignKey: "userId" });
-Attendance.belongsTo(UserRole, { foreignKey: "userId" });
+Attendance.belongsTo(UserRole, { foreignKey: { name: "userId", allowNull: true }, constraints: false });
 
 // 1. Employee (requester)
 LeaveRequest.belongsTo(UserRole, {
-  foreignKey: "userId",
+  foreignKey: { name: "userId", allowNull: true },
   as: "employee",
+  constraints: false
 });
 UserRole.hasMany(LeaveRequest, {
   foreignKey: "userId",
@@ -136,8 +139,9 @@ UserRole.hasMany(LeaveRequest, {
 
 // 2. Approver (admin who approved)
 LeaveRequest.belongsTo(User, {
-  foreignKey: "approvedBy",
+  foreignKey: { name: "approvedBy", allowNull: true },
   as: "approver",
+  constraints: false
 });
 
 User.hasMany(LeaveRequest, {
@@ -147,8 +151,9 @@ User.hasMany(LeaveRequest, {
 
 // New correct lines
 Holiday.belongsTo(User, {
-  foreignKey: "createdBy",
+  foreignKey: { name: "createdBy", allowNull: true },
   as: "creator",
+  constraints: false
 });
 User.hasMany(Holiday, {
   foreignKey: "createdBy",
@@ -156,34 +161,35 @@ User.hasMany(Holiday, {
 });
 
 UserRole.hasMany(PayrollRelease, { foreignKey: "userId" });
-PayrollRelease.belongsTo(UserRole, { foreignKey: "userId", as: "UserRole" });
+PayrollRelease.belongsTo(UserRole, { foreignKey: { name: "userId", allowNull: true }, as: "UserRole", constraints: false });
 
 User.hasMany(PayrollRelease, {
   foreignKey: "releasedBy",
   as: "releasedSalaries",
 });
-PayrollRelease.belongsTo(User, { foreignKey: "releasedBy", as: "releaser" });
+PayrollRelease.belongsTo(User, { foreignKey: { name: "releasedBy", allowNull: true }, as: "releaser", constraints: false });
 
 UserRole.hasMany(SalaryHistory, { foreignKey: "userId" });
-SalaryHistory.belongsTo(UserRole, { foreignKey: "userId" });
+SalaryHistory.belongsTo(UserRole, { foreignKey: { name: "userId", allowNull: true }, constraints: false });
 
 // Loan Associations
 UserRole.hasMany(EmployeeLoan, { foreignKey: "employeeId" });
-EmployeeLoan.belongsTo(UserRole, { foreignKey: "employeeId" });
+EmployeeLoan.belongsTo(UserRole, { foreignKey: { name: "employeeId", allowNull: true }, constraints: false });
 
 EmployeeLoan.hasMany(LoanPayment, { foreignKey: "loanId" });
-LoanPayment.belongsTo(EmployeeLoan, { foreignKey: "loanId" });
+LoanPayment.belongsTo(EmployeeLoan, { foreignKey: { name: "loanId", allowNull: true }, constraints: false });
 
 User.hasMany(LoanPayment, { foreignKey: "paidBy" });
-LoanPayment.belongsTo(User, { foreignKey: "paidBy" });
+LoanPayment.belongsTo(User, { foreignKey: { name: "paidBy", allowNull: true }, constraints: false });
 
 // AdvanceSalary Associations
 UserRole.hasMany(AdvanceSalary, { foreignKey: "userId" });
-AdvanceSalary.belongsTo(UserRole, { foreignKey: "userId" });
+AdvanceSalary.belongsTo(UserRole, { foreignKey: { name: "userId", allowNull: true }, constraints: false });
 
 // PayrollFine Associations
 UserRole.hasMany(PayrollFine, { foreignKey: "userId" });
-PayrollFine.belongsTo(UserRole, { foreignKey: "userId" });
+PayrollFine.belongsTo(UserRole, { foreignKey: { name: "userId", allowNull: true }, constraints: false });
+
 
 module.exports = {
   User,

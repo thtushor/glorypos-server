@@ -5,6 +5,7 @@ function errorHandler(err, req, res, next) {
     let message = 'Internal Server Error';
     let errors = null;
 
+
     // Sequelize Validation Error
     if (err.name === 'SequelizeValidationError') {
         statusCode = 400;
@@ -15,13 +16,13 @@ function errorHandler(err, req, res, next) {
             value: e.value
         }));
     }
-    
+
     // Sequelize Unique Constraint Error
     else if (err.name === 'SequelizeUniqueConstraintError') {
         statusCode = 409; // Conflict
         const field = err.errors?.[0]?.path;
         const value = err.errors?.[0]?.value;
-        
+
         if (field === 'code') {
             message = `Product code '${value}' already exists`;
         } else if (field === 'sku') {
@@ -31,32 +32,32 @@ function errorHandler(err, req, res, next) {
         } else {
             message = `${field} '${value}' already exists`;
         }
-        
+
         errors = err.errors?.map(e => ({
             field: e.path,
             message: e.message,
             value: e.value
         }));
     }
-    
+
     // Sequelize Foreign Key Constraint Error
     else if (err.name === 'SequelizeForeignKeyConstraintError') {
         statusCode = 400;
         message = 'Invalid reference: Related record does not exist';
     }
-    
+
     // Sequelize Database Error
     else if (err.name === 'SequelizeDatabaseError') {
         statusCode = 400;
         message = 'Database operation failed';
     }
-    
+
     // Sequelize Connection Error
     else if (err.name === 'SequelizeConnectionError') {
         statusCode = 503; // Service Unavailable
         message = 'Database connection failed';
     }
-    
+
     // JWT Authentication Errors
     else if (err.name === 'JsonWebTokenError') {
         statusCode = 401;
@@ -66,7 +67,7 @@ function errorHandler(err, req, res, next) {
         statusCode = 401;
         message = 'Authentication token expired';
     }
-    
+
     // Multer File Upload Errors
     else if (err.name === 'MulterError') {
         statusCode = 400;
@@ -80,12 +81,12 @@ function errorHandler(err, req, res, next) {
             message = err.message || 'File upload error';
         }
     }
-    
+
     // Custom Error Messages
     else if (err.message) {
         message = err.message;
     }
-    
+
     // Handle array of errors from Sequelize
     else if (err.errors && Array.isArray(err.errors)) {
         message = err.errors.map(e => e.message).join(', ');
