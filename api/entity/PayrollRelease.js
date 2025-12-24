@@ -17,7 +17,7 @@ const PayrollRelease = sequelize.define(
       type: Sequelize.INTEGER,
       allowNull: false,
       references: {
-        model: "userroles", // Updated reference
+        model: "Userroles", // Updated reference
         key: "id",
       },
       onDelete: "CASCADE",
