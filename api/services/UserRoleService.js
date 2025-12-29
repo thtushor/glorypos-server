@@ -6,7 +6,7 @@ const {
   User,
 } = require("../entity");
 const SalaryHistory = require("../entity/SalaryHistory");
-const { Op } = require("sequelize");
+const { Op, where } = require("sequelize");
 const bcrypt = require("bcrypt");
 const moment = require("moment");
 const Attendance = require("../entity/Attendance");
@@ -253,6 +253,7 @@ const UserRoleService = {
 
       if (query.role) whereClause.role = query.role;
       if (query.status) whereClause.status = query.status;
+      if (query?.parentUserId) whereClause.parentUserId = query?.parentUserId;
 
       if (query.searchKey) {
         whereClause[Op.or] = [

@@ -1,5 +1,6 @@
 const express = require('express');
 const { StatementService, AuthService } = require('../services');
+const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 const router = express.Router();
 
 // Middleware for consistent API responses
@@ -16,8 +17,8 @@ const requestHandler = (message, handler) => async (req, res) => {
     }
 };
 
-router.get('/products', AuthService.authenticate, requestHandler(null, async (req) => {
-    return await StatementService.getProductStatements(req.query);
+router.get('/products', AuthService.authenticate,addShopAccess, requestHandler(null, async (req) => {
+    return await StatementService.getProductStatements(req.query,req?.accessibleShopIds);
 }));
 
 router.get('/products/:productId', AuthService.authenticate, requestHandler(null, async (req) => {

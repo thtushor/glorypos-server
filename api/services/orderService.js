@@ -388,6 +388,10 @@ const OrderService = {
                 ];
             }
 
+            if(query?.shopId){
+                whereClause.UserId = query?.shopId
+            }
+
             // Add other filters if provided
             if (query.orderStatus) whereClause.orderStatus = query.orderStatus;
             if (query.paymentStatus) whereClause.paymentStatus = query.paymentStatus;

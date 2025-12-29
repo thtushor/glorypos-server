@@ -3,7 +3,7 @@ const { Op, Sequelize } = require('sequelize');
 const sequelize = require('../db');
 
 class StatementService {
-    async getProductStatements(query = {}) {
+    async getProductStatements(query = {},accessibleShopIds) {
         try {
             // Pagination setup
             const page = parseInt(query.page) || 1;
@@ -80,6 +80,13 @@ class StatementService {
                         UserId: productUserId
                     };
                     includeProduct.required = true;
+                }
+            }
+            else{
+                includeProduct.where = {
+                    [Op.in]: {
+                        UserId: accessibleShopIds
+                    }
                 }
             }
 
