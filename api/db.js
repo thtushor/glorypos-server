@@ -61,6 +61,7 @@ if (process.env.NODE_ENV === 'development') {
 // alter: true
 
 sequelize
+    // .sync({ force: false, })   // ✅ NO ALTER
     // .sync({ force: true, alter: true })   // ✅ NO ALTER
     .sync({ alter: true, })
     .then(async (res) => {
