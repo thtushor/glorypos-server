@@ -540,7 +540,21 @@ const OrderService = {
                         { model: Product, include: [{ model: Color }, { model: Size }, { model: Brand }, { model: Unit }] },
                         { model: Color }, { model: Size }]
                 }]
-            }]
+            },
+            {
+                model: StuffCommission,
+                as: "commissions",
+                include: [{
+                    model: UserRole,
+                    as: "staff",
+                    include: [{
+                        model: User,
+                        as: "parent"
+                    }]
+                }]
+            }
+
+            ]
         });
         console.log(order);
         if (!order) {
