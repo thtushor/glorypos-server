@@ -332,9 +332,18 @@ const OrderService = {
                 }
             }
 
-            // Create commission if stuffId is provided
+            // Handle commission - each order should only have one staff commission
             if (orderData?.stuffId && orderData.stuffId.toString().trim() !== '') {
                 try {
+                    // If updating an existing order, delete old commissions first
+                    if (orderId) {
+                        await StuffCommission.destroy({
+                            where: { OrderId: orderId },
+                            transaction
+                        });
+                    }
+
+                    // Create new commission
                     await StuffCommissionService.recordFromOrder({
                         order,
                         stuffId: Number(orderData.stuffId),
@@ -345,6 +354,16 @@ const OrderService = {
                     // Log commission error but don't fail the order creation
                     console.error('Commission creation error:', commissionError.message);
                     // Optionally, you might want to handle this differently
+                }
+            } else if (orderId) {
+                // If no stuffId provided but updating order, remove any existing commissions
+                try {
+                    await StuffCommission.destroy({
+                        where: { OrderId: orderId },
+                        transaction
+                    });
+                } catch (commissionError) {
+                    console.error('Commission deletion error:', commissionError.message);
                 }
             }
 

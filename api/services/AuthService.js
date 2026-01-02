@@ -235,9 +235,6 @@ const AuthService = {
                 }
             );
 
-
-
-
             if (!user) {
                 return { status: false, message: "User not found", data: null };
             }
