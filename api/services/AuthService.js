@@ -165,7 +165,23 @@ const AuthService = {
             }
 
             const token = jwt.sign({ id: user ? user?.id : childUser?.parentUserId, childId: childUser?.id }, process.env.JWT_SECRET, { expiresIn: '15d' });
-            return { status: true, message: "Login successful", data: { user: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser }, token } };
+
+            // Ensure permissions is always an array of strings
+            let permissions = [];
+            if (childUser?.permissions) {
+                if (Array.isArray(childUser.permissions)) {
+                    permissions = childUser.permissions.filter(p => typeof p === 'string');
+                } else if (typeof childUser.permissions === 'string') {
+                    try {
+                        const parsed = JSON.parse(childUser.permissions);
+                        permissions = Array.isArray(parsed) ? parsed.filter(p => typeof p === 'string') : [];
+                    } catch (e) {
+                        permissions = [];
+                    }
+                }
+            }
+
+            return { status: true, message: "Login successful", data: { user: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: { ...childUser?.dataValues, permissions } }, token } };
         } catch (error) {
             throw error;
         }
@@ -191,7 +207,22 @@ const AuthService = {
             return { status: false, message: "User not found", data: null };
         }
 
-        return { status: true, message: "Profile retrieved successfully", data: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: childUser } };
+        // Ensure permissions is always an array of strings
+        let permissions = [];
+        if (childUser?.permissions) {
+            if (Array.isArray(childUser.permissions)) {
+                permissions = childUser.permissions.filter(p => typeof p === 'string');
+            } else if (typeof childUser.permissions === 'string') {
+                try {
+                    const parsed = JSON.parse(childUser.permissions);
+                    permissions = Array.isArray(parsed) ? parsed.filter(p => typeof p === 'string') : [];
+                } catch (e) {
+                    permissions = [];
+                }
+            }
+        }
+
+        return { status: true, message: "Profile retrieved successfully", data: user ? { ...user.dataValues, parentShop } : { ...childUser.parent?.dataValues, parentShop, child: { ...childUser?.dataValues, permissions } } };
     },
 
     async getUserById(userId) {

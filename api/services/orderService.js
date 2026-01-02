@@ -118,6 +118,8 @@ const OrderService = {
 
                 await Order.update({
                     ...orderData,
+                    customerPhone: orderData?.customerPhone || orderData?.phone || null,
+                    customerEmail: orderData?.customerEmail || orderData?.email || null,
                     tableNumber,
                     guestNumber,
                     specialNotes,
@@ -137,6 +139,8 @@ const OrderService = {
                 // Create order
                 order = await Order.create({
                     ...orderData,
+                    customerPhone: orderData?.customerPhone || orderData?.phone || null,
+                    customerEmail: orderData?.customerEmail || orderData?.email || null,
                     tableNumber,
                     guestNumber,
                     specialNotes,
@@ -388,7 +392,7 @@ const OrderService = {
                 ];
             }
 
-            if(query?.shopId){
+            if (query?.shopId) {
                 whereClause.UserId = query?.shopId
             }
 
