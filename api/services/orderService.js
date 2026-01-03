@@ -264,6 +264,7 @@ const OrderService = {
                         subtotal,
                         discountType,
                         unitDiscount: discount,
+                        totalDiscount: discount * quantity,
                         purchasePrice: Number(product?.purchasePrice || 0),
                     }, { transaction, where: { id: orderItemId } });
                 } else {
@@ -281,6 +282,7 @@ const OrderService = {
                         subtotal,
                         discountType,
                         unitDiscount: discount,
+                        totalDiscount: discount * quantity,
                         purchasePrice: Number(product?.purchasePrice || 0),
                     }, { transaction });
                 }
@@ -810,6 +812,8 @@ const OrderService = {
                 raw: true
             });
 
+            console.log({ orderStats })
+
             // Optimized: Use database aggregation for order item stats
             // Get table names and escape them properly for MySQL
             const OrderTableName = Order.getTableName();
@@ -838,7 +842,7 @@ const OrderService = {
                 SELECT 
                     COALESCE(SUM(oi.unitPrice * oi.quantity), 0) as totalRevenue,
                     COALESCE(SUM(COALESCE(oi.purchasePrice, p.purchasePrice, 0) * oi.quantity), 0) as totalCost,
-                    COALESCE(SUM(COALESCE(oi.totalDiscount, oi.unitDiscount * oi.quantity, 0)), 0) as itemLevelDiscount
+                    COALESCE(SUM(COALESCE(oi.unitDiscount * oi.quantity, oi.totalDiscount, 0)), 0) as itemLevelDiscount
                 FROM \`${OrderItemTableName}\` oi
                 INNER JOIN \`${OrderTableName}\` o ON oi.OrderId = o.id
                 LEFT JOIN \`${ProductTableName}\` p ON oi.ProductId = p.id
