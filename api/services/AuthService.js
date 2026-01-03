@@ -667,7 +667,6 @@ const AuthService = {
 
     async getSubShops(query, userId, accessibleShopIds = []) {
         try {
-            console.log({ accessibleShopIds })
             const page = parseInt(query.page) || 1;
             const pageSize = parseInt(query.pageSize) || 10;
             const offset = (page - 1) * pageSize;
