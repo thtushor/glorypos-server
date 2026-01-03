@@ -70,6 +70,25 @@ const ProductService = {
             processedData.code = await generateUniqueCode('PRD', 'code', 6);
         }
 
+        // Convert 0 values to null for foreign key IDs
+        if (processedData.CategoryId === 0) {
+            processedData.CategoryId = null;
+        }
+        if (processedData.BrandId === 0) {
+            processedData.BrandId = null;
+        }
+        if (processedData.UnitId === 0) {
+            processedData.UnitId = null;
+        }
+        if (processedData.ColorId === 0) {
+            processedData.ColorId = null;
+        }
+        if (processedData.SizeId === 0) {
+            processedData.SizeId = null;
+        }
+
+        console.log({ processedData })
+
         const product = await Product.create({
             ...processedData,
             UserId: userId
@@ -351,6 +370,23 @@ const ProductService = {
                     processedData.images = currentImages;
                 }
             }
+        }
+
+        // Convert 0 values to null for foreign key IDs
+        if (processedData.CategoryId === 0) {
+            processedData.CategoryId = null;
+        }
+        if (processedData.BrandId === 0) {
+            processedData.BrandId = null;
+        }
+        if (processedData.UnitId === 0) {
+            processedData.UnitId = null;
+        }
+        if (processedData.ColorId === 0) {
+            processedData.ColorId = null;
+        }
+        if (processedData.SizeId === 0) {
+            processedData.SizeId = null;
         }
 
         // Auto-generate SKU if explicitly provided but empty, or if product doesn't have SKU

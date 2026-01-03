@@ -31,7 +31,7 @@ if (process.env.NODE_ENV === 'development') {
         {
             host: process.env.MYSQLHOST_DEV,
             dialect: 'mysql',
-            logging: true,
+            logging: false,
             port: process.env.PORT
         }
     );
@@ -49,7 +49,7 @@ if (process.env.NODE_ENV === 'development') {
         {
             host: process.env.MYSQLHOST,
             dialect: 'mysql',
-            logging: true,
+            logging: false,
             port: process.env.PORT
         }
     );
@@ -63,7 +63,7 @@ if (process.env.NODE_ENV === 'development') {
 sequelize
     // .sync({ force: false, })   // ✅ NO ALTER
     // .sync({ force: true, alter: true })   // ✅ NO ALTER
-    .sync({ alter: true, })
+    .sync({ force: false, })
     .then(async (res) => {
         console.log("Database Connected", process.env.PORT);
     })
