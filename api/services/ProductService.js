@@ -87,11 +87,9 @@ const ProductService = {
             processedData.SizeId = null;
         }
 
-        console.log({ processedData })
-
         const product = await Product.create({
             ...processedData,
-            UserId: userId
+            UserId: processedData?.UserId || userId
         });
         return { status: true, message: "Product created successfully", data: product };
     },

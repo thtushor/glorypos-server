@@ -18,8 +18,7 @@ const Product = sequelize.define(
         sku: {
             type: Sequelize.STRING,
             allowNull: false,
-            unique: "sku_code",
-            comment: "unique code for the product",
+            comment: "unique code for the product per shop",
         },
         name: {
             type: Sequelize.STRING,
@@ -136,6 +135,15 @@ const Product = sequelize.define(
         //     },
         //     comment: "Reference to the user table",
         // }
+    },
+    {
+        indexes: [
+            {
+                unique: true,
+                fields: ["UserId", "sku"],
+                name: "unique_sku_per_shop"
+            }
+        ]
     }
 );
 

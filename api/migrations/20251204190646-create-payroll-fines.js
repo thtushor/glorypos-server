@@ -42,9 +42,27 @@ module.exports = {
         type: Sequelize.DATE,
       },
     });
-    // Add indexes for faster lookups
-    await queryInterface.addIndex('PayrollFines', ['userId']);
-    await queryInterface.addIndex('PayrollFines', ['salaryMonth']);
+
+    // Add indexes for faster lookups with explicit names to avoid duplicates
+    try {
+      await queryInterface.addIndex('PayrollFines', ['userId'], {
+        name: 'payroll_fines_user_id'
+      });
+    } catch (error) {
+      if (!error.message.includes('Duplicate key name')) {
+        throw error;
+      }
+    }
+
+    try {
+      await queryInterface.addIndex('PayrollFines', ['salaryMonth'], {
+        name: 'payroll_fines_salary_month'
+      });
+    } catch (error) {
+      if (!error.message.includes('Duplicate key name')) {
+        throw error;
+      }
+    }
   },
 
   async down(queryInterface, Sequelize) {
