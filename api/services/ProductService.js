@@ -146,6 +146,20 @@ const ProductService = {
             }
         }
 
+
+        // Sorting Configuration
+        const defaultSortField = 'name';
+        const defaultSortDirection = 'DESC';
+        const allowedSortFields = ['createdAt', 'name', 'id', 'stock', 'price', 'status', 'updatedAt'];
+
+        // Determine sort field and direction
+        const currentSortField = allowedSortFields.includes(query.sortBy) ? query.sortBy : defaultSortField;
+        const currentSortOrder = query.sortOrder && ['ASC', 'DESC'].includes(query.sortOrder.toUpperCase())
+            ? query.sortOrder.toUpperCase()
+            : defaultSortDirection;
+
+        const orderClause = [[currentSortField, currentSortOrder]];
+
         // ✅ SKU Filter - Handle separately
         let skuFilter = null;
         if (query?.sku) {
@@ -178,8 +192,8 @@ const ProductService = {
             whereClause[Op.or] = searchConditions;
         }
 
-        // Add other filters if provided (exclude pagination, search, and filter params)
-        const { searchKey, shopId, categoryId, brandId, unitId, minPrice, maxPrice, modelNo, gender, page: queryPage, pageSize: queryPageSize, ...otherFilters } = query;
+        // Add other filters if provided (exclude pagination, search, sorting and filter params)
+        const { searchKey, shopId, categoryId, brandId, unitId, minPrice, maxPrice, modelNo, gender, page: queryPage, pageSize: queryPageSize, sortBy, sortOrder, ...otherFilters } = query;
         Object.keys(otherFilters).forEach(key => {
             if (otherFilters[key] !== undefined && otherFilters[key] !== null && otherFilters[key] !== '') {
                 whereClause[key] = otherFilters[key];
@@ -262,7 +276,8 @@ const ProductService = {
                 }
             ],
             limit: pageSize,
-            offset: offset
+            offset: offset,
+            order: orderClause
         });
 
         return {
