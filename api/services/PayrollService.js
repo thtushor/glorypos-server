@@ -562,7 +562,7 @@ const PayrollService = {
         id: userId, parentUserId:
           { [Op.in]: accessibleShopIds }
       },
-      attributes: ["id", "fullName", "baseSalary", "requiredDailyHours"],
+      attributes: ["id", "fullName", "baseSalary", "requiredDailyHours", "salaryFrequency"],
     });
 
     if (!user) {
@@ -579,6 +579,7 @@ const PayrollService = {
       fullName: user.fullName,
       baseSalary,
       requiredDailyHours: parseInt(user.requiredDailyHours || 8),
+      salaryFrequency: user.salaryFrequency || "monthly",
     };
   },
 
@@ -936,6 +937,205 @@ const PayrollService = {
   },
 
   /**
+   * Helper: Calculate Salary Based on Frequency
+   * @param {string} salaryFrequency - 'daily', 'weekly', or 'monthly'
+   * @param {number} baseSalary - The base salary amount (daily rate for daily, weekly rate for weekly, monthly for monthly)
+   * @param {object} attendanceData - Attendance details for the month
+   * @param {string} salaryMonth - The salary month in YYYY-MM format
+   * @param {object} attendanceRecords - Raw attendance records to check actual presence
+   * @returns {object} - Calculated salary details
+   */
+  async calculateSalaryByFrequency(salaryFrequency, baseSalary, attendanceData, salaryMonth, userId) {
+    const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+    const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+    const totalDaysInMonth = monthEnd.date();
+
+    let effectiveBaseSalary = baseSalary;
+    let calculationMethod = "";
+    let calculationDetails = {};
+
+    if (salaryFrequency === "daily") {
+      // Daily salary calculation
+      // baseSalary represents the daily rate
+      // Count actual present days from attendance
+
+      const startDate = monthStart.format("YYYY-MM-DD");
+      const endDate = monthEnd.format("YYYY-MM-DD");
+
+      // Fetch actual attendance records for the month
+      const attendances = await Attendance.findAll({
+        where: {
+          userId,
+          date: { [Op.gte]: startDate, [Op.lte]: endDate },
+        },
+        attributes: ["date", "type", "isHalfDay"],
+        raw: true,
+      });
+
+      // Build attendance map
+      const attendanceMap = {};
+      attendances.forEach((att) => {
+        attendanceMap[att.date] = att;
+      });
+
+      // Count present days
+      let presentDays = 0;
+      let currentDateStr = startDate;
+
+      const weekendDays = process.env.WEEKEND_DAYS
+        ? process.env.WEEKEND_DAYS.split(",").map(Number)
+        : [];
+
+      while (currentDateStr <= endDate) {
+        const dayOfWeek = moment(currentDateStr).day();
+
+        // Skip weekends
+        if (!weekendDays.includes(dayOfWeek)) {
+          const att = attendanceMap[currentDateStr];
+
+          if (att) {
+            if (att.type === "present") {
+              // Present day - check if half day
+              if (att.isHalfDay) {
+                presentDays += 0.5;
+              } else {
+                presentDays += 1;
+              }
+            }
+            // If absent, don't count (already 0)
+          } else {
+            // No attendance record - assume present (full day)
+            presentDays += 1;
+          }
+        }
+
+        currentDateStr = moment(currentDateStr).add(1, "day").format("YYYY-MM-DD");
+      }
+
+      // Calculate salary: daily rate * present days
+      effectiveBaseSalary = Math.round(baseSalary * presentDays);
+
+      calculationMethod = "daily";
+      calculationDetails = {
+        dailyRate: Number(baseSalary.toFixed(2)),
+        totalDaysInMonth,
+        presentDays: Number(presentDays.toFixed(1)),
+        calculatedSalary: effectiveBaseSalary,
+      };
+    } else if (salaryFrequency === "weekly") {
+      // Weekly salary calculation
+      // baseSalary represents the weekly rate
+      // Count complete weeks (Saturday to Friday cycles)
+
+      const startDate = monthStart.format("YYYY-MM-DD");
+      const endDate = monthEnd.format("YYYY-MM-DD");
+
+      // Fetch actual attendance records for the month
+      const attendances = await Attendance.findAll({
+        where: {
+          userId,
+          date: { [Op.gte]: startDate, [Op.lte]: endDate },
+        },
+        attributes: ["date", "type", "isHalfDay"],
+        raw: true,
+      });
+
+      // Build attendance map
+      const attendanceMap = {};
+      attendances.forEach((att) => {
+        attendanceMap[att.date] = att;
+      });
+
+      const weekendDays = process.env.WEEKEND_DAYS
+        ? process.env.WEEKEND_DAYS.split(",").map(Number)
+        : [];
+
+      // Find the first Saturday of the month or before
+      let weekStart = monthStart.clone();
+      while (weekStart.day() !== 6) { // 6 = Saturday
+        weekStart.subtract(1, "day");
+      }
+
+      // If weekStart is before monthStart, move to first Saturday in month
+      if (weekStart.isBefore(monthStart)) {
+        weekStart = monthStart.clone();
+        while (weekStart.day() !== 6 && weekStart.isSameOrBefore(monthEnd)) {
+          weekStart.add(1, "day");
+        }
+      }
+
+      let weekCount = 0;
+      let presentWeeks = 0;
+      let currentWeekStart = weekStart.clone();
+
+      while (currentWeekStart.isSameOrBefore(monthEnd)) {
+        const currentWeekEnd = currentWeekStart.clone().add(6, "days"); // Saturday to Friday (7 days)
+
+        // Check if employee was present in this week
+        let hasPresentDay = false;
+        let presentDaysInWeek = 0;
+
+        for (let d = currentWeekStart.clone(); d.isSameOrBefore(currentWeekEnd) && d.isSameOrBefore(monthEnd); d.add(1, "day")) {
+          const dateStr = d.format("YYYY-MM-DD");
+          const dayOfWeek = d.day();
+
+          // Skip weekends
+          if (!weekendDays.includes(dayOfWeek) && d.isSameOrAfter(monthStart)) {
+            const att = attendanceMap[dateStr];
+
+            if (att) {
+              if (att.type === "present") {
+                hasPresentDay = true;
+                if (att.isHalfDay) {
+                  presentDaysInWeek += 0.5;
+                } else {
+                  presentDaysInWeek += 1;
+                }
+              }
+            } else {
+              // No attendance record - assume present
+              hasPresentDay = true;
+              presentDaysInWeek += 1;
+            }
+          }
+        }
+
+        weekCount++;
+        if (hasPresentDay) {
+          presentWeeks++;
+        }
+
+        currentWeekStart.add(7, "days"); // Move to next Saturday
+      }
+
+      // Calculate salary: weekly rate * present weeks
+      effectiveBaseSalary = Math.round(baseSalary * presentWeeks);
+
+      calculationMethod = "weekly";
+      calculationDetails = {
+        weeklyRate: Number(baseSalary.toFixed(2)),
+        totalWeeks: weekCount,
+        presentWeeks,
+        calculatedSalary: effectiveBaseSalary,
+      };
+    } else {
+      // Monthly salary (default)
+      // Keep the original monthly calculation
+      effectiveBaseSalary = baseSalary;
+      calculationMethod = "monthly";
+      calculationDetails = {
+        monthlyRate: baseSalary,
+      };
+    }
+
+    return {
+      effectiveBaseSalary,
+      calculationMethod,
+      calculationDetails,
+    };
+  },
+
+  /**
    * MAIN PAYROLL CALCULATION FUNCTION
    * Follows the complete flowchart
    */
@@ -949,7 +1149,7 @@ const PayrollService = {
 
       // Step 1: Fetch Employee Base Salary and Joining Date
       const employee = await this.fetchEmployeeBaseSalary(accessibleShopIds, userId);
-      const { baseSalary } = employee;
+      const { baseSalary, salaryFrequency } = employee;
 
       // Get employee's full details to check joining date
       const userDetails = await UserRole.findOne({
@@ -979,23 +1179,111 @@ const PayrollService = {
       // Step 3: Fetch Attendance Records & Calculate Deductions (Simplified - Days Only)
       const attendanceData = await this.calculateAttendanceDetails(userId, salaryMonth);
 
-      // Pro-rate base salary for joining month
+      // Calculate salary based on frequency (daily, weekly, or monthly)
       let effectiveBaseSalary = baseSalary;
+      let salaryCalculationDetails = {};
       let isJoiningMonth = false;
 
       if (salaryMonth === joiningMonth) {
         isJoiningMonth = true;
-        // Calculate total days in the month
-        const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
-        const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
-        const totalDaysInMonth = monthEnd.date();
+      }
 
-        // Calculate working days from joining date to end of month
-        const joiningDate = moment(userDetails.createdAt);
-        const daysWorked = monthEnd.diff(joiningDate, "days") + 1; // +1 to include joining day
+      // Apply salary frequency calculation
+      if (salaryFrequency === "daily") {
+        // Daily salary: Calculate based on present days
+        const salaryCalc = await this.calculateSalaryByFrequency(
+          salaryFrequency,
+          baseSalary,
+          attendanceData,
+          salaryMonth,
+          userId
+        );
+        effectiveBaseSalary = salaryCalc.effectiveBaseSalary;
+        salaryCalculationDetails = salaryCalc.calculationDetails;
 
-        // Pro-rate the base salary
-        effectiveBaseSalary = Math.round((baseSalary / totalDaysInMonth) * daysWorked);
+        // For joining month with daily salary, pro-rate the daily rate
+        if (isJoiningMonth) {
+          const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+          const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+          const totalDaysInMonth = monthEnd.date();
+          const joiningDate = moment(userDetails.createdAt);
+          const daysWorked = monthEnd.diff(joiningDate, "days") + 1;
+
+          // Adjust calculation for joining month
+          const dailyRate = baseSalary / totalDaysInMonth;
+          const maxPossibleDays = daysWorked;
+
+          // Recalculate based on actual present days within the working period
+          const presentDays = Math.min(
+            salaryCalculationDetails.presentDays,
+            maxPossibleDays
+          );
+          effectiveBaseSalary = Math.round(dailyRate * presentDays);
+
+          salaryCalculationDetails.joiningMonthAdjustment = {
+            totalDaysInMonth,
+            daysWorked,
+            maxPossibleDays,
+            adjustedPresentDays: presentDays,
+          };
+        }
+      } else if (salaryFrequency === "weekly") {
+        // Weekly salary: Calculate based on complete weeks
+        const salaryCalc = await this.calculateSalaryByFrequency(
+          salaryFrequency,
+          baseSalary,
+          attendanceData,
+          salaryMonth,
+          userId
+        );
+        effectiveBaseSalary = salaryCalc.effectiveBaseSalary;
+        salaryCalculationDetails = salaryCalc.calculationDetails;
+
+        // For joining month with weekly salary, calculate weeks from joining date
+        if (isJoiningMonth) {
+          const joiningDate = moment(userDetails.createdAt);
+          const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+          const weeksWorked = Math.ceil(monthEnd.diff(joiningDate, "days") / 7);
+          const weeklyRate = baseSalary / 4;
+
+          effectiveBaseSalary = Math.round(weeklyRate * weeksWorked);
+
+          salaryCalculationDetails.joiningMonthAdjustment = {
+            joiningDate: joiningDate.format("YYYY-MM-DD"),
+            weeksWorked,
+            weeklyRate: Number(weeklyRate.toFixed(2)),
+          };
+        }
+      } else {
+        // Monthly salary (default): Keep original logic with pro-rating for joining month
+        if (isJoiningMonth) {
+          const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
+          const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+          const totalDaysInMonth = monthEnd.date();
+          const joiningDate = moment(userDetails.createdAt);
+          const daysWorked = monthEnd.diff(joiningDate, "days") + 1;
+
+          // Pro-rate the base salary
+          effectiveBaseSalary = Math.round((baseSalary / totalDaysInMonth) * daysWorked);
+
+          salaryCalculationDetails = {
+            monthlyRate: baseSalary,
+            totalDaysInMonth,
+            daysWorked,
+            proRatedSalary: effectiveBaseSalary,
+          };
+        } else {
+          // Apply unpaid leave deduction for monthly salary
+          const unpaidLeaveDeductionAmount = Math.round(
+            baseSalary * attendanceData.unpaidLeaveDeductionRatio
+          );
+          effectiveBaseSalary = Math.max(0, baseSalary - unpaidLeaveDeductionAmount);
+
+          salaryCalculationDetails = {
+            monthlyRate: baseSalary,
+            unpaidLeaveDeduction: unpaidLeaveDeductionAmount,
+          };
+        }
       }
 
       // Step 4: Fetch Sales & Commission Data
@@ -1009,9 +1297,16 @@ const PayrollService = {
       );
 
       // Step 6: Calculate Net Salary after attendance deduction
-      // Calculate actual deduction amount based on unpaid leave days (using effective base salary)
-      const unpaidLeaveDeductionAmount = Math.round(effectiveBaseSalary * attendanceData.unpaidLeaveDeductionRatio);
-      const netAttendanceSalary = Math.round(effectiveBaseSalary - unpaidLeaveDeductionAmount);
+      // For daily and weekly, deduction is already applied in effectiveBaseSalary
+      // For monthly, we need to apply unpaid leave deduction
+      let unpaidLeaveDeductionAmount = 0;
+      let netAttendanceSalary = effectiveBaseSalary;
+
+      if (salaryFrequency === "monthly" && !isJoiningMonth) {
+        unpaidLeaveDeductionAmount = Math.round(baseSalary * attendanceData.unpaidLeaveDeductionRatio);
+        netAttendanceSalary = Math.round(baseSalary - unpaidLeaveDeductionAmount);
+      }
+
       const salaryAfterAttendance = Math.max(0, netAttendanceSalary);
 
       // Step 7: Fetch other deductions
@@ -1096,8 +1391,10 @@ const PayrollService = {
         fullName: employee.fullName,
         salaryMonth,
         baseSalary, // Original monthly base salary
-        effectiveBaseSalary, // Pro-rated base salary (same as baseSalary if not joining month)
+        effectiveBaseSalary, // Calculated base salary based on frequency
         isJoiningMonth, // Flag to indicate if this is the joining month
+        salaryFrequency, // 'daily', 'weekly', or 'monthly'
+        salaryCalculationDetails, // Details of how salary was calculated
 
         // Attendance Details (Days Only)
         totalWorkingDays: attendanceData.totalWorkingDays,
