@@ -1,132 +1,243 @@
-# Salary Frequency Implementation
+# Salary Frequency Implementation - Updated
 
 ## Overview
-Updated the payroll system to support three different salary frequency types: **Daily**, **Weekly**, and **Monthly**.
+Updated the payroll system to support three different salary frequency types with precise calculation rules:
 
-## Changes Made
+## Salary Calculation Rules
 
-### 1. UserRole Entity (`api/entity/UserRole.js`)
-- Already has `salaryFrequency` field with ENUM values: `'daily'`, `'weekly'`, `'monthly'`
-- Default value: `'monthly'`
+### 1. **Daily Salary**
+- `baseSalary` = **daily rate** (amount per working day)
+- **Formula**: `salary = dailyRate × workingDays`
+- **Working Days**: Count from payroll start (joining date or month start, whichever is later) to month end
+- **Excludes**: Weekend days (configured in `WEEKEND_DAYS`)
+- **Absence Deduction**: `dailyRate × unpaidLeaveDays`
 
-### 2. PayrollService (`api/services/PayrollService.js`)
+**Example:**
+```
+Daily Rate: 500 BDT/day
+Payroll Period: Jan 1-31, 2026 (31 days)
+Weekends: Friday & Saturday
+Working Days: 22 days
+Unpaid Leave: 2 days
 
-#### A. Updated `fetchEmployeeBaseSalary` function
-- Added `salaryFrequency` to the attributes fetched from UserRole
-- Returns `salaryFrequency` along with other employee details
+Gross Salary = 500 × 22 = 11,000 BDT
+Absence Deduction = 500 × 2 = 1,000 BDT
+Net Salary = 11,000 - 1,000 = 10,000 BDT
+```
 
-#### B. New Helper Function: `calculateSalaryByFrequency`
-This async function calculates salary based on the frequency type:
+### 2. **Weekly Salary**
+- `baseSalary` = **weekly rate** (amount per Saturday-Friday week)
+- **Formula**: `salary = weeklyRate × completeWeeks`
+- **Complete Week**: Saturday to Friday (7 consecutive days)
+- **Partial Weeks**: NOT PAID - carried to next payroll period
+- **Week Counting**: Starts from first Saturday on or after payroll start date
+- **Absence Deduction**: `(weeklyRate / 7) × unpaidLeaveDays`
 
-**Daily Salary:**
-- `baseSalary` represents the **daily rate**
-- Counts actual present days from attendance records
-- Formula: `salary = dailyRate × presentDays`
-- Handles half-day attendance (counts as 0.5 days)
-- Excludes weekend days (configured in `WEEKEND_DAYS` env variable)
-- If no attendance record exists for a working day, assumes present
+**Important Rules:**
+- Only complete Saturday-Friday weeks are paid
+- Days before the first complete week are not paid
+- Partial week at month end carries to next month
+- No pro-rating for partial weeks
 
-**Weekly Salary:**
-- `baseSalary` represents the **weekly rate**
-- Counts complete weeks (Saturday to Friday cycles)
-- Formula: `salary = weeklyRate × presentWeeks`
-- A week is counted as "present" if employee was present for at least one day in that week
-- Handles half-day attendance
-- Excludes weekend days
+**Example:**
+```
+Weekly Rate: 3,500 BDT/week
+Payroll Period: Jan 1-31, 2026
 
-**Monthly Salary:**
-- `baseSalary` represents the **monthly rate**
-- Keeps the original logic with unpaid leave deductions
-- For joining month: pro-rates based on days worked
+Week 1: Jan 4 (Sat) - Jan 10 (Fri) ✓ Complete
+Week 2: Jan 11 (Sat) - Jan 17 (Fri) ✓ Complete
+Week 3: Jan 18 (Sat) - Jan 24 (Fri) ✓ Complete
+Week 4: Jan 25 (Sat) - Jan 31 (Fri) ✗ Partial (only 7 days, but Jan 31 is Friday)
 
-#### C. Updated `calculateMonthlyPayrollDetails` function
-Main changes:
-1. Extracts `salaryFrequency` from employee data
-2. Calls `calculateSalaryByFrequency` for daily and weekly frequencies
-3. Applies special handling for joining month:
-   - **Daily**: Limits present days to actual days worked from joining date
-   - **Weekly**: Calculates weeks from joining date
-   - **Monthly**: Pro-rates salary based on days worked (existing logic)
-4. For **monthly** frequency (non-joining month), applies unpaid leave deduction
-5. For **daily** and **weekly**, deduction is already applied in the calculation
-6. Returns `salaryFrequency` and `salaryCalculationDetails` in response
+Actually, if Jan 31 is Friday:
+Week 4: Jan 25 (Sat) - Jan 31 (Fri) ✓ Complete
 
-### 3. Response Data Structure
-The payroll calculation now includes:
+Complete Weeks: 4
+Gross Salary = 3,500 × 4 = 14,000 BDT
+
+If employee had 1 unpaid leave day:
+Absence Deduction = (3,500 / 7) × 1 = 500 BDT
+Net Salary = 14,000 - 500 = 13,500 BDT
+```
+
+### 3. **Monthly Salary**
+- `baseSalary` = **fixed monthly amount**
+- **Formula**: `salary = monthlyRate` (no calculation)
+- **Absence Deduction**: `(monthlyRate / workingDays) × unpaidLeaveDays`
+
+**Example:**
+```
+Monthly Rate: 15,000 BDT/month
+Working Days in Month: 22 days
+Unpaid Leave: 2 days
+
+Gross Salary = 15,000 BDT
+Absence Deduction = (15,000 / 22) × 2 = 1,363.64 BDT
+Net Salary = 15,000 - 1,363.64 = 13,636.36 BDT
+```
+
+## Implementation Details
+
+### Changes Made
+
+#### 1. `calculateSalaryByFrequency` Function
+New signature:
+```javascript
+async calculateSalaryByFrequency(
+  salaryFrequency,  // 'daily', 'weekly', or 'monthly'
+  baseSalary,       // Rate amount
+  salaryMonth,      // 'YYYY-MM'
+  userId,           // Employee ID
+  joiningDate       // Employee joining date
+)
+```
+
+**Daily Calculation:**
+- Determines payroll start: `max(monthStart, joiningDate)`
+- Counts working days (excludes weekends)
+- Returns: `dailyRate × workingDays`
+
+**Weekly Calculation:**
+- Finds first Saturday on or after payroll start
+- Counts only complete Saturday-Friday weeks
+- Tracks partial weeks and days before first week
+- Returns: `weeklyRate × completeWeeks`
+- Provides detailed week breakdown
+
+**Monthly Calculation:**
+- Returns fixed `baseSalary`
+- No day/week calculation
+
+#### 2. `calculateMonthlyPayrollDetails` Function
+Updated logic:
+1. Fetches employee with `salaryFrequency`
+2. Calls `calculateSalaryByFrequency` for daily/weekly
+3. Uses fixed amount for monthly
+4. Calculates gross: `baseSalary + commission + bonus`
+5. Applies absence deduction based on frequency type
+6. Subtracts advance salary, loans, fines, other deductions
+
+### Response Structure
+
 ```javascript
 {
-  // ... existing fields ...
-  salaryFrequency: "daily" | "weekly" | "monthly",
+  userId: 123,
+  fullName: "John Doe",
+  salaryMonth: "2026-01",
+  baseSalary: 500,              // Daily/weekly/monthly rate
+  effectiveBaseSalary: 11000,   // Calculated amount
+  salaryFrequency: "daily",
+  
   salaryCalculationDetails: {
     // For daily:
     dailyRate: 500.00,
+    payrollStartDate: "2026-01-01",
+    payrollEndDate: "2026-01-31",
     totalDaysInMonth: 31,
-    presentDays: 22.5,
-    calculatedSalary: 11250,
+    workingDays: 22,
+    calculatedSalary: 11000
     
     // For weekly:
     weeklyRate: 3500.00,
-    totalWeeks: 5,
-    presentWeeks: 4,
+    payrollStartDate: "2026-01-01",
+    payrollEndDate: "2026-01-31",
+    firstWeekStartDate: "2026-01-04",
+    completeWeeks: 4,
+    daysBeforeFirstWeek: 3,
+    partialWeekDays: 0,
+    weekDetails: [
+      {
+        weekNumber: 1,
+        startDate: "2026-01-04",
+        endDate: "2026-01-10",
+        status: "complete"
+      },
+      // ... more weeks
+    ],
     calculatedSalary: 14000,
+    note: null
     
     // For monthly:
     monthlyRate: 15000.00,
-    unpaidLeaveDeduction: 500.00 // if applicable
-  }
+    payrollStartDate: "2026-01-01",
+    payrollEndDate: "2026-01-31",
+    note: "Fixed monthly salary"
+  },
+  
+  // Attendance
+  totalWorkingDays: 22,
+  totalUnpaidLeaveDays: 2,
+  unpaidLeaveDeductionAmount: 1000.00,
+  
+  // Gross & Deductions
+  grossSalary: 11000,
+  totalCommission: 500,
+  bonusAmount: 1000,
+  netAttendanceSalary: 10000,
+  
+  // Other deductions
+  advanceAmount: 500,
+  loanDeduction: 200,
+  fineAmount: 100,
+  otherDeduction: 0,
+  
+  // Final
+  netPayableSalary: 9200
 }
 ```
 
-## How It Works
+## Joining Month Handling
 
-### Daily Salary Example
-- Employee has daily rate: **500 BDT/day**
-- Month: January 2026 (31 days)
-- Weekend days: Friday & Saturday
-- Working days: 22 days
-- Present: 20 full days + 1 half day = 20.5 days
-- **Salary = 500 × 20.5 = 10,250 BDT**
+All frequency types automatically handle joining month:
 
-### Weekly Salary Example
-- Employee has weekly rate: **3,500 BDT/week**
-- Month: January 2026
-- Week 1 (Sat-Fri): Present 3 days → Counts as 1 week
-- Week 2 (Sat-Fri): Present 5 days → Counts as 1 week
-- Week 3 (Sat-Fri): Absent all days → Counts as 0 weeks
-- Week 4 (Sat-Fri): Present 2 days → Counts as 1 week
-- Week 5 (Sat-Fri): Present 1 day → Counts as 1 week
-- **Salary = 3,500 × 4 = 14,000 BDT**
+- **Payroll Start Date** = `max(monthStart, joiningDate)`
+- **Daily**: Counts only working days from joining date
+- **Weekly**: Starts week counting from first Saturday after joining
+- **Monthly**: Fixed amount (no pro-rating)
 
-### Monthly Salary Example
-- Employee has monthly rate: **15,000 BDT/month**
-- Unpaid leave: 2 days out of 22 working days
-- Deduction: 15,000 × (2/22) = 1,363.64 BDT
-- **Salary = 15,000 - 1,363.64 = 13,636.36 BDT**
+## Weekend Configuration
 
-## Important Notes
+Set in `.env`:
+```
+WEEKEND_DAYS=5,6
+```
+Where: 0=Sunday, 1=Monday, ..., 6=Saturday
 
-1. **Weekend Configuration**: Make sure `WEEKEND_DAYS` is set in `.env` file
-   - Example: `WEEKEND_DAYS=5,6` (Friday=5, Saturday=6)
+## Key Differences from Previous Version
 
-2. **Attendance Records**: 
-   - For daily/weekly frequencies, the system relies on attendance records
-   - Missing attendance records are assumed as "present"
-   - Mark absences explicitly for accurate calculations
+| Aspect | Old Logic | New Logic |
+|--------|-----------|-----------|
+| Daily | Based on attendance records | Based on working days count |
+| Weekly | Based on presence in week | Complete weeks only, no partial |
+| Monthly | Pro-rated for joining month | Fixed amount always |
+| Absence | Deducted in calculation | Deducted after gross calculation |
+| Partial Weeks | Pro-rated | Carried to next period |
 
-3. **Joining Month Handling**:
-   - All frequencies handle joining month pro-rating
-   - Daily: Limits to days from joining date
-   - Weekly: Calculates weeks from joining date
-   - Monthly: Pro-rates based on days worked
+## Testing Scenarios
 
-4. **Backward Compatibility**:
-   - Existing employees without `salaryFrequency` will default to "monthly"
-   - Current logic for monthly salary remains unchanged
+### Daily Salary
+1. ✅ Full month with no absences
+2. ✅ Joining mid-month
+3. ✅ With unpaid leave days
+4. ✅ Month with different day counts (28, 30, 31)
 
-## Testing Recommendations
+### Weekly Salary
+1. ✅ Month starting on Saturday
+2. ✅ Month starting mid-week (partial first week)
+3. ✅ Month ending mid-week (partial last week)
+4. ✅ Joining mid-month
+5. ✅ With unpaid leave days
 
-1. Test daily salary with various attendance patterns
-2. Test weekly salary across month boundaries
-3. Test joining month scenarios for all frequencies
-4. Verify weekend exclusion works correctly
-5. Test half-day attendance calculations
+### Monthly Salary
+1. ✅ Full month
+2. ✅ With unpaid leave days
+3. ✅ Joining month (no pro-rating)
+
+## Migration Notes
+
+- Existing employees default to `salaryFrequency = 'monthly'`
+- Update `UserRole` records to set appropriate frequency
+- `baseSalary` meaning changes based on frequency:
+  - Daily: per-day rate
+  - Weekly: per-week rate
+  - Monthly: per-month amount
