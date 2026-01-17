@@ -642,7 +642,7 @@ const PayrollService = {
 
     const weekendDays = process.env.WEEKEND_DAYS
       ? process.env.WEEKEND_DAYS.split(",").map(Number)
-      : [5, 6]; // Friday & Saturday
+      : []; // Friday & Saturday
 
     // Fetch holidays, approved leaves, and attendance records
     const [holidays, approvedLeaves, attendances] = await Promise.all([

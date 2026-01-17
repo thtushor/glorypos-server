@@ -38,7 +38,13 @@ const UserRole = sequelize.define("UserRole", {
     comment: "Store role-specific permissions",
   },
   parentUserId: { type: Sequelize.INTEGER, allowNull: false }, // Added this as it's used in service
-  baseSalary: { type: Sequelize.DECIMAL(10, 2), allowNull: true }, // Added for current base salary (monthly)
+  baseSalary: { type: Sequelize.DECIMAL(10, 2), allowNull: true }, // Base salary amount
+  salaryFrequency: {
+    type: Sequelize.ENUM("daily", "weekly", "monthly"),
+    allowNull: true,
+    defaultValue: "monthly",
+    comment: "Salary payment frequency"
+  },
   requiredDailyHours: { type: Sequelize.INTEGER, allowNull: true }, // Added for daily required hours
 });
 
