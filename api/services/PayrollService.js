@@ -1850,110 +1850,117 @@ const PayrollService = {
         originalCalculation: calculated.calculationSnapshot,
       };
 
+      // Deduct allocatedToPreviousDues from current month's netPayableSalary
+      const adjustedNetPayableSalary = Math.max(0, parseFloat(netPayableSalary) - allocatedToPreviousDues);
+
       let payrollRelease;
       let isUpdate = false;
 
-      if (existingPayroll) {
-        // UPDATE EXISTING RECORD - Increment editable fields
-        isUpdate = true;
+      // Only create/update current month payroll if there's remaining payment after settling previous dues
+      if (allocatedToCurrentMonth > 0 || existingPayroll) {
+        if (existingPayroll) {
+          // UPDATE EXISTING RECORD - Increment editable fields
+          isUpdate = true;
 
-        const updatedPaidAmount = parseFloat(existingPayroll.paidAmount || 0) + allocatedToCurrentMonth;
-        const updatedAdvanceAmount = parseFloat(existingPayroll.advanceAmount || 0) + parseFloat(advanceAmount);
-        const updatedBonusAmount = parseFloat(existingPayroll.bonusAmount || 0) + parseFloat(bonusAmount);
-        const updatedOvertimeAmount = parseFloat(existingPayroll.overtimeAmount || 0) + parseFloat(overtimeAmount);
-        const updatedFineAmount = parseFloat(existingPayroll.fineAmount || 0) + parseFloat(fineAmount);
-        const updatedOtherDeduction = parseFloat(existingPayroll.otherDeduction || 0) + parseFloat(otherDeduction);
+          const updatedPaidAmount = parseFloat(existingPayroll.paidAmount || 0) + allocatedToCurrentMonth;
+          const updatedAdvanceAmount = parseFloat(existingPayroll.advanceAmount || 0) + parseFloat(advanceAmount);
+          const updatedBonusAmount = parseFloat(existingPayroll.bonusAmount || 0) + parseFloat(bonusAmount);
+          const updatedOvertimeAmount = parseFloat(existingPayroll.overtimeAmount || 0) + parseFloat(overtimeAmount);
+          const updatedFineAmount = parseFloat(existingPayroll.fineAmount || 0) + parseFloat(fineAmount);
+          const updatedOtherDeduction = parseFloat(existingPayroll.otherDeduction || 0) + parseFloat(otherDeduction);
 
-        // Recalculate net payable with updated values
-        const updatedGross =
-          parseFloat(baseSalary) +
-          parseFloat(calculated.totalCommission) +
-          updatedBonusAmount +
-          updatedOvertimeAmount;
+          // Recalculate net payable with updated values (deduct allocated to previous dues)
+          const updatedGross =
+            parseFloat(baseSalary) +
+            parseFloat(calculated.totalCommission) +
+            updatedBonusAmount +
+            updatedOvertimeAmount;
 
-        const updatedTotalDeductions =
-          parseFloat(expectedLeaveDeduction) +
-          updatedAdvanceAmount +
-          updatedFineAmount +
-          parseFloat(loanDeduction) +
-          updatedOtherDeduction;
+          const updatedTotalDeductions =
+            parseFloat(expectedLeaveDeduction) +
+            updatedAdvanceAmount +
+            updatedFineAmount +
+            parseFloat(loanDeduction) +
+            updatedOtherDeduction;
 
-        const updatedNetPayable = netPayableSalary;
+          const updatedNetPayable = adjustedNetPayableSalary;
 
-        // Determine status: PENDING if there's remaining due, RELEASED if fully paid
-        const updatedDueAmount = parseFloat(updatedNetPayable) - updatedPaidAmount;
-        const payrollStatus = updatedDueAmount > 0.01 ? "PENDING" : "RELEASED";
-        const releaseDate = payrollStatus === "RELEASED" ? new Date() : (existingPayroll.releaseDate || null);
+          // Determine status: PENDING if there's remaining due, RELEASED if fully paid
+          const updatedDueAmount = parseFloat(updatedNetPayable) - updatedPaidAmount;
+          const payrollStatus = updatedDueAmount > 0.01 ? "PENDING" : "RELEASED";
+          const releaseDate = payrollStatus === "RELEASED" ? new Date() : (existingPayroll.releaseDate || null);
 
-        // Update the existing record
-        await existingPayroll.update(
-          {
-            baseSalary: parseFloat(baseSalary),
-            advanceAmount: updatedAdvanceAmount,
-            bonusAmount: updatedBonusAmount,
-            bonusDescription: bonusDescription || existingPayroll.bonusDescription,
-            loanDeduction: parseFloat(loanDeduction),
-            fineAmount: updatedFineAmount,
-            overtimeAmount: updatedOvertimeAmount,
-            otherDeduction: updatedOtherDeduction,
-            netPayableSalary: updatedNetPayable,
-            paidAmount: updatedPaidAmount,
-            shopId,
-            status: payrollStatus,
-            releaseDate: releaseDate,
-            releasedBy: payrollStatus === "RELEASED" ? adminId : existingPayroll.releasedBy,
-            calculationSnapshot: {
-              ...enhancedSnapshot,
-              updateHistory: [
-                ...(existingPayroll.calculationSnapshot?.updateHistory || []),
-                {
-                  updatedAt: new Date(),
-                  updatedBy: adminId,
-                  incrementedFields: {
-                    paidAmount: allocatedToCurrentMonth,
-                    advanceAmount: parseFloat(advanceAmount),
-                    bonusAmount: parseFloat(bonusAmount),
-                    overtimeAmount: parseFloat(overtimeAmount),
-                    fineAmount: parseFloat(fineAmount),
-                    otherDeduction: parseFloat(otherDeduction),
+          // Update the existing record
+          await existingPayroll.update(
+            {
+              baseSalary: parseFloat(baseSalary),
+              advanceAmount: updatedAdvanceAmount,
+              bonusAmount: updatedBonusAmount,
+              bonusDescription: bonusDescription || existingPayroll.bonusDescription,
+              loanDeduction: parseFloat(loanDeduction),
+              fineAmount: updatedFineAmount,
+              overtimeAmount: updatedOvertimeAmount,
+              otherDeduction: updatedOtherDeduction,
+              netPayableSalary: updatedNetPayable,
+              paidAmount: updatedPaidAmount,
+              shopId,
+              status: payrollStatus,
+              releaseDate: releaseDate,
+              releasedBy: payrollStatus === "RELEASED" ? adminId : existingPayroll.releasedBy,
+              calculationSnapshot: {
+                ...enhancedSnapshot,
+                updateHistory: [
+                  ...(existingPayroll.calculationSnapshot?.updateHistory || []),
+                  {
+                    updatedAt: new Date(),
+                    updatedBy: adminId,
+                    incrementedFields: {
+                      paidAmount: allocatedToCurrentMonth,
+                      advanceAmount: parseFloat(advanceAmount),
+                      bonusAmount: parseFloat(bonusAmount),
+                      overtimeAmount: parseFloat(overtimeAmount),
+                      fineAmount: parseFloat(fineAmount),
+                      otherDeduction: parseFloat(otherDeduction),
+                    },
+                    deductedFromNetPayable: allocatedToPreviousDues,
                   },
-                },
-              ],
+                ],
+              },
             },
-          },
-          { transaction }
-        );
+            { transaction }
+          );
 
-        payrollRelease = existingPayroll;
-      } else {
-        // CREATE NEW RECORD
-        // Determine status: PENDING if there's remaining due, RELEASED if fully paid
-        const currentMonthDue = parseFloat(netPayableSalary) - allocatedToCurrentMonth;
-        const payrollStatus = currentMonthDue > 0.01 ? "PENDING" : "RELEASED";
-        const releaseDate = payrollStatus === "RELEASED" ? new Date() : null;
+          payrollRelease = existingPayroll;
+        } else {
+          // CREATE NEW RECORD
+          // Determine status: PENDING if there's remaining due, RELEASED if fully paid
+          const currentMonthDue = parseFloat(adjustedNetPayableSalary) - allocatedToCurrentMonth;
+          const payrollStatus = currentMonthDue > 0.01 ? "PENDING" : "RELEASED";
+          const releaseDate = payrollStatus === "RELEASED" ? new Date() : null;
 
-        payrollRelease = await PayrollRelease.create(
-          {
-            userId,
-            salaryMonth,
-            baseSalary: parseFloat(baseSalary),
-            advanceAmount: parseFloat(advanceAmount),
-            bonusAmount: parseFloat(bonusAmount),
-            bonusDescription,
-            loanDeduction: parseFloat(loanDeduction),
-            fineAmount: parseFloat(fineAmount),
-            overtimeAmount: parseFloat(overtimeAmount),
-            otherDeduction: parseFloat(otherDeduction),
-            netPayableSalary: parseFloat(netPayableSalary),
-            paidAmount: allocatedToCurrentMonth,
-            shopId,
-            status: payrollStatus,
-            releaseDate: releaseDate,
-            releasedBy: payrollStatus === "RELEASED" ? adminId : null,
-            calculationSnapshot: enhancedSnapshot,
-          },
-          { transaction }
-        );
+          payrollRelease = await PayrollRelease.create(
+            {
+              userId,
+              salaryMonth,
+              baseSalary: parseFloat(baseSalary),
+              advanceAmount: parseFloat(advanceAmount),
+              bonusAmount: parseFloat(bonusAmount),
+              bonusDescription,
+              loanDeduction: parseFloat(loanDeduction),
+              fineAmount: parseFloat(fineAmount),
+              overtimeAmount: parseFloat(overtimeAmount),
+              otherDeduction: parseFloat(otherDeduction),
+              netPayableSalary: parseFloat(adjustedNetPayableSalary),
+              paidAmount: allocatedToCurrentMonth,
+              shopId,
+              status: payrollStatus,
+              releaseDate: releaseDate,
+              releasedBy: payrollStatus === "RELEASED" ? adminId : null,
+              calculationSnapshot: enhancedSnapshot,
+            },
+            { transaction }
+          );
+        }
       }
 
       // Update loan balance if loan deduction was applied
