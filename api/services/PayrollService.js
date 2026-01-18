@@ -946,15 +946,18 @@ const PayrollService = {
    * @returns {object} - Calculated salary details
    */
   async calculateSalaryByFrequency(salaryFrequency, baseSalary, salaryMonth, userId, joiningDate) {
-    const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month");
-    const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month");
+    const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month").startOf("day");
+    const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month").startOf("day");
     const totalDaysInMonth = monthEnd.date();
 
     // Determine payroll start date (either month start or joining date, whichever is later)
-    const payrollStartDate = moment.max(monthStart, moment(joiningDate));
+    // Use UTC to avoid timezone conversion issues (e.g., 2026-01-01T19:06:05.000Z should be 2026-01-01, not 2026-01-02)
+    const payrollStartDate = moment.max(monthStart, moment.utc(joiningDate).startOf("day"));
 
-    console.log({ payrollStartDate })
-    const payrollEndDate = monthEnd;
+    console.log({ payrollStartDate, monthStart, joiningDate, joiningMonth: moment.utc(joiningDate).format("YYYY-MM-DD") })
+    // If month end is greater than current date, use current date; otherwise use month end
+    const currentDate = moment().endOf("day");
+    const payrollEndDate = monthEnd.isAfter(currentDate) ? currentDate : monthEnd;
 
     let effectiveBaseSalary = baseSalary;
     let calculationMethod = "";
