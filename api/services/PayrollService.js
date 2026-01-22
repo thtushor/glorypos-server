@@ -1157,6 +1157,18 @@ const PayrollService = {
         );
       }
 
+      // Validate that salaryStartDate is not in the future (compared to today)
+      if (salaryStartDate) {
+        const today = moment().startOf("day");
+        const salaryStart = moment(salaryStartDate).startOf("day");
+
+        if (salaryStart.isAfter(today)) {
+          throw new Error(
+            `Cannot calculate salary. Employee's salary start date (${moment(salaryStartDate).format("YYYY-MM-DD")}) is in the future. Salary can only be calculated after the start date.`
+          );
+        }
+      }
+
       // Step 2: Fetch Advance Salary Records & Calculate Outstanding
       const advanceData = await this.calculateOutstandingAdvance(userId, salaryMonth);
 
