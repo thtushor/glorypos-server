@@ -303,5 +303,19 @@ router.delete(
   })
 );
 
+// Delete payroll release
+router.delete(
+  "/payroll/release/:id",
+  AuthService.authenticate,
+  addShopAccess,
+  requestHandler(null, async (req, res) => {
+    const result = await PayrollService.deletePayrollRelease(
+      req.accessibleShopIds,
+      req.params.id
+    );
+    res.status(result.status ? 200 : 400).json(result);
+  })
+);
+
 
 module.exports = router;

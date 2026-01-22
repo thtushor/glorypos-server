@@ -2554,6 +2554,142 @@ const PayrollService = {
     }
   },
 
+  /**
+   * Delete Payroll Release
+   * When deleting a payroll, we need to:
+   * 1. Reverse advance salary deductions (reduce repaidAmount)
+   * 2. Reverse loan deductions (restore loan balance)
+   * 3. Delete the payroll record
+   */
+  async deletePayrollRelease(accessibleShopIds, payrollId) {
+    const transaction = await sequelize.transaction();
+
+    try {
+      // Find the payroll release
+      const payroll = await PayrollRelease.findByPk(payrollId, {
+        include: [
+          {
+            model: UserRole,
+            as: "UserRole",
+            where: { parentUserId: { [Op.in]: accessibleShopIds } },
+            attributes: ["id", "fullName", "parentUserId"],
+          },
+        ],
+        transaction,
+      });
+
+      if (!payroll) {
+        throw new Error("Payroll record not found or unauthorized.");
+      }
+
+      const { userId, salaryMonth, advanceAmount, loanDeduction } = payroll;
+
+      // 1. Reverse advance salary deductions
+      if (parseFloat(advanceAmount) > 0) {
+        // Find all approved advances for this user up to this salary month
+        const advances = await AdvanceSalary.findAll({
+          where: {
+            userId,
+            status: { [Op.in]: ["APPROVED", "PARTIALLY_REPAID", "REPAID"] },
+            salaryMonth: { [Op.lte]: salaryMonth },
+          },
+          order: [["salaryMonth", "ASC"]],
+          transaction,
+        });
+
+        // Reverse the deduction (FIFO - same order as deduction)
+        let remainingReversal = parseFloat(advanceAmount);
+
+        for (const advance of advances) {
+          if (remainingReversal <= 0) break;
+
+          const currentRepaid = parseFloat(advance.repaidAmount || 0);
+          const advanceTotal = parseFloat(advance.amount);
+
+          // Calculate how much was deducted from this advance
+          const deductedFromThis = Math.min(currentRepaid, remainingReversal);
+
+          if (deductedFromThis > 0) {
+            const newRepaidAmount = currentRepaid - deductedFromThis;
+
+            // Update status based on new repaid amount
+            let newStatus = "APPROVED";
+            if (newRepaidAmount >= advanceTotal) {
+              newStatus = "REPAID";
+            } else if (newRepaidAmount > 0) {
+              newStatus = "PARTIALLY_REPAID";
+            }
+
+            await advance.update(
+              {
+                repaidAmount: newRepaidAmount,
+                status: newStatus,
+              },
+              { transaction }
+            );
+
+            remainingReversal -= deductedFromThis;
+          }
+        }
+      }
+
+      // 2. Reverse loan deductions
+      if (parseFloat(loanDeduction) > 0) {
+        // Find the active loan for this user
+        const employeeLoan = await EmployeeLoan.findOne({
+          where: {
+            employeeId: userId,
+            status: { [Op.in]: ["ACTIVE", "COMPLETED"] },
+          },
+          transaction,
+        });
+
+        if (employeeLoan) {
+          // Restore the loan balance
+          const newRemainingBalance = parseFloat(employeeLoan.remainingBalance) + parseFloat(loanDeduction);
+          const totalLoanAmount = parseFloat(employeeLoan.loanAmount);
+
+          await employeeLoan.update(
+            {
+              remainingBalance: Math.min(newRemainingBalance, totalLoanAmount),
+              status: newRemainingBalance > 0 ? "ACTIVE" : "COMPLETED",
+            },
+            { transaction }
+          );
+
+          // Delete the loan payment record for this payroll
+          await LoanPayment.destroy({
+            where: {
+              loanId: employeeLoan.id,
+              employeeId: userId,
+              paidAmount: parseFloat(loanDeduction),
+            },
+            limit: 1,
+            order: [["createdAt", "DESC"]],
+            transaction,
+          });
+        }
+      }
+
+      // 3. Delete the payroll record
+      await payroll.destroy({ transaction });
+
+      await transaction.commit();
+
+      return {
+        status: true,
+        message: "Payroll record deleted successfully. Advance and loan deductions have been reversed.",
+      };
+    } catch (error) {
+      await transaction.rollback();
+      console.error("deletePayrollRelease error:", error);
+      return {
+        status: false,
+        message: error.message || "Failed to delete payroll record.",
+      };
+    }
+  },
+
 };
 
 module.exports = PayrollService;
