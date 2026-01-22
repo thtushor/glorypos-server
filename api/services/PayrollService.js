@@ -562,11 +562,16 @@ const PayrollService = {
         id: userId, parentUserId:
           { [Op.in]: accessibleShopIds }
       },
-      attributes: ["id", "fullName", "baseSalary", "requiredDailyHours", "salaryFrequency"],
+      attributes: ["id", "fullName", "baseSalary", "requiredDailyHours", "salaryFrequency", "salaryStartDate"],
     });
 
     if (!user) {
       throw new Error("Employee not found");
+    }
+
+    // Check if salaryStartDate is set
+    if (!user.salaryStartDate) {
+      throw new Error("Employee salary start date is not set. Please set the salary start date before generating payroll or advance salary.");
     }
 
     const baseSalary = parseFloat(user.baseSalary || 0);
@@ -578,8 +583,9 @@ const PayrollService = {
       userId: user.id,
       fullName: user.fullName,
       baseSalary,
-      requiredDailyHours: parseInt(user.requiredDailyHours || 8),
       salaryFrequency: user.salaryFrequency || "monthly",
+      requiredDailyHours: user.requiredDailyHours,
+      salaryStartDate: user.salaryStartDate,
     };
   },
 
@@ -942,19 +948,21 @@ const PayrollService = {
    * @param {number} baseSalary - The base salary amount (daily rate for daily, weekly rate for weekly, monthly for monthly)
    * @param {string} salaryMonth - The salary month in YYYY-MM format
    * @param {number} userId - User ID
-   * @param {Date} joiningDate - Employee joining date
+   * @param {Date} salaryStartDate - Employee salary start date (if null, salary cannot be calculated)
    * @returns {object} - Calculated salary details
    */
-  async calculateSalaryByFrequency(salaryFrequency, baseSalary, salaryMonth, userId, joiningDate) {
+  async calculateSalaryByFrequency(salaryFrequency, baseSalary, salaryMonth, userId, salaryStartDate) {
     const monthStart = moment(salaryMonth, "YYYY-MM").startOf("month").startOf("day");
     const monthEnd = moment(salaryMonth, "YYYY-MM").endOf("month").startOf("day");
     const totalDaysInMonth = monthEnd.date();
 
-    // Determine payroll start date (either month start or joining date, whichever is later)
+    // Determine payroll start date (either month start or salary start date, whichever is later)
     // Use UTC to avoid timezone conversion issues (e.g., 2026-01-01T19:06:05.000Z should be 2026-01-01, not 2026-01-02)
-    const payrollStartDate = moment.max(monthStart, moment.utc(joiningDate).startOf("day"));
+    const payrollStartDate = salaryStartDate
+      ? moment.max(monthStart, moment.utc(salaryStartDate).startOf("day"))
+      : monthStart;
 
-    console.log({ payrollStartDate, monthStart, joiningDate, joiningMonth: moment.utc(joiningDate).format("YYYY-MM-DD") })
+    console.log({ payrollStartDate, monthStart, salaryStartDate, salaryStartMonth: salaryStartDate ? moment.utc(salaryStartDate).format("YYYY-MM-DD") : null })
     // If month end is greater than current date, use current date; otherwise use month end
     const currentDate = moment().endOf("day");
     const payrollEndDate = monthEnd.isAfter(currentDate) ? currentDate : monthEnd;
@@ -2236,9 +2244,14 @@ const PayrollService = {
     try {
       const user = await UserRole.findOne({
         where: { id: userId },
-        attributes: ["id", "fullName", "baseSalary"],
+        attributes: ["id", "fullName", "baseSalary", "salaryStartDate"],
       });
       if (!user) throw new Error("Employee not found.");
+
+      // Check if salaryStartDate is set
+      if (!user.salaryStartDate) {
+        throw new Error("Employee salary start date is not set. Please set the salary start date before requesting advance salary.");
+      }
 
       // const baseSalary = parseFloat(user.baseSalary);
       if (amount <= 0) {

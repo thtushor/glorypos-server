@@ -46,6 +46,12 @@ const UserRole = sequelize.define("UserRole", {
     comment: "Salary payment frequency"
   },
   requiredDailyHours: { type: Sequelize.INTEGER, allowNull: true }, // Added for daily required hours
+  salaryStartDate: {
+    type: Sequelize.DATEONLY,
+    allowNull: true,
+    defaultValue: null,
+    comment: "Date from which salary calculation starts. If null, employee cannot generate salary or take advance salary."
+  },
 });
 
 module.exports = UserRole;
