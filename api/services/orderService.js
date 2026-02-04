@@ -96,9 +96,8 @@ const OrderService = {
 
             paymentStatus = kotPaymentStatus === "pending" ? "pending" : paymentStatus
 
-            // Generate unique order number where it should be less 8 digits and it should be unique
-            // const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`.slice(0, 8);
-            let orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 100000000)}`;
+            // Generate 8-digit order number (YMMDD### format)
+            const orderNumber = await this.generateOrderNumber(orderData.shopId || userId, transaction);
 
             // For order adjustments, fetch existing order items to handle removed items
             let existingOrderItems = [];
@@ -2210,6 +2209,34 @@ const OrderService = {
                 error: error.message
             };
         }
+    },
+
+    // Generate sequential 8-digit order number (max 99,999,999 orders)
+    async generateOrderNumber(shopId, transaction) {
+        // Find the latest order by order number
+        const latestOrder = await Order.findOne({
+            where: {
+                orderNumber: {
+                    [Op.regexp]: '^[0-9]+$' // Only numeric order numbers
+                }
+            },
+            order: [['orderNumber', 'DESC']],
+            transaction
+        });
+
+        let nextId = 1;
+        if (latestOrder && latestOrder.orderNumber) {
+            const currentId = parseInt(latestOrder.orderNumber);
+            if (!isNaN(currentId)) {
+                nextId = currentId + 1;
+            }
+        }
+
+        if (nextId > 99999999) {
+            throw new Error('Order number limit (99,999,999) reached. Please contact support.');
+        }
+
+        return String(nextId).padStart(8, '0');
     }
 };
 
