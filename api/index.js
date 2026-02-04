@@ -26,6 +26,7 @@ const UserRoleRoutes = require("./routes/userRoutes");
 const PayrollRoutes = require("./routes/PayrollRoutes");
 const stuffCommissionRoutes = require("./routes/stuffCommissionRoutes");
 const loanRoutes = require("./routes/LoanRoutes");
+const thermalPrintRoutes = require("./routes/thermalPrintRoutes");
 
 const port = process.env.SERVER_PORT || 3000;
 const SchedulerService = require("./services/SchedulerService");
@@ -60,6 +61,7 @@ app.use("/api/user", UserRoleRoutes);
 app.use("/api/payroll", requestHandler(null, PayrollRoutes));
 app.use("/api/commissions", requestHandler(null, stuffCommissionRoutes));
 app.use("/api/loan", requestHandler(null, loanRoutes));
+app.use("/api/thermal-print", requestHandler(null, thermalPrintRoutes));
 
 app.get("/", function (req, res) {
   res.send("welcome to glorypos family!");
