@@ -23,7 +23,18 @@ const printTest = async (printerType = 'usb') => {
                 // Auto-find USB device (vid/pid can be passed if known)
                 device = new escpos.USB();
             } catch (err) {
-                return reject(new Error("Could not find or initialize USB printer: " + err.message));
+                let helpfulMsg = "";
+                const platform = process.platform;
+
+                if (platform === 'win32') {
+                    helpfulMsg = " On Windows, you may need to use Zadig to install the WinUSB driver for your printer.";
+                } else if (platform === 'darwin') {
+                    helpfulMsg = " On Mac, ensure you have installed libusb (brew install libusb).";
+                } else if (platform === 'linux') {
+                    helpfulMsg = " On Linux, ensure you have build-essential and libudev-dev installed.";
+                }
+
+                return reject(new Error("Could not find or initialize USB printer: " + err.message + helpfulMsg));
             }
         } else if (printerType === 'network') {
             // device = new escpos.Network('localhost');
