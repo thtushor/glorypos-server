@@ -1083,7 +1083,8 @@ const OrderService = {
                     phoneNumber: userData?.phoneNumber || "+66910414319",
                     email: userData?.email || "support@fashiongloryltd.com",
                     accountStatus: userData?.accountStatus,
-                    accountType: userData?.accountType
+                    accountType: userData?.accountType,
+                    shopType: userData?.shopType
                 },
 
                 // Product-wise details
@@ -1106,7 +1107,11 @@ const OrderService = {
 
                         // Build details string with discount info
                         let detailParts = [];
-                        if (colorName || sizeName) {
+                        if (userData?.shopType === 'restaurant') {
+                            if (sizeName) {
+                                detailParts.push(sizeName);
+                            }
+                        } else if (colorName || sizeName) {
                             detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
                         }
                         if (discountType && discountAmount > 0) {
@@ -1124,7 +1129,7 @@ const OrderService = {
                         variantDetails = {
                             variantId: item.ProductVariant?.id,
                             variantSku: item.ProductVariant?.sku,
-                            color: colorName,
+                            color: userData?.shopType === 'restaurant' ? null : colorName,
                             size: sizeName
                         };
                         shop = item.Product?.User
@@ -1137,7 +1142,11 @@ const OrderService = {
 
                         // Build details string with discount info
                         let detailParts = [];
-                        if (colorName || sizeName) {
+                        if (userData?.shopType === 'restaurant') {
+                            if (sizeName) {
+                                detailParts.push(sizeName);
+                            }
+                        } else if (colorName || sizeName) {
                             detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
                         }
                         if (discountType && discountAmount > 0) {
@@ -1175,7 +1184,7 @@ const OrderService = {
                         productName,
                         sku,
                         details,
-                        color: colorName,
+                        color: userData?.shopType === 'restaurant' ? null : colorName,
                         size: sizeName,
                         quantity,
                         unitPrice,
