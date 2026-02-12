@@ -37,6 +37,12 @@ router.post('/delete/:orderId', AuthService.authenticate, addShopAccess, request
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+// Delete multiple orders
+router.post('/delete-many', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await OrderService.deleteMany(req.body, req.accessibleShopIds);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
 
 // Get dashboard statistics
 router.get('/dashboard', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
