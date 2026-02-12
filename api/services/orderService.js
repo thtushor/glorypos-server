@@ -699,6 +699,162 @@ const OrderService = {
         }
     },
 
+    async deleteMany(payload, accessibleShopIds) {
+        const transaction = await sequelize.transaction();
+
+        try {
+            let whereClause = {};
+
+            // 1. Determine which orders to delete
+            if (payload.ids && Array.isArray(payload.ids) && payload.ids.length > 0) {
+                // Delete specific IDs
+                whereClause.id = { [Op.in]: payload.ids };
+
+                // Also apply shop filter for security
+                const targetShopIds = resolveShopFilter(accessibleShopIds, payload.shopId);
+                whereClause.UserId = { [Op.in]: targetShopIds };
+
+            } else if (payload.all) {
+                // Delete based on filters (reuse getAll logic)
+                const targetShopIds = resolveShopFilter(accessibleShopIds, payload.shopId);
+                whereClause = { UserId: { [Op.in]: targetShopIds } };
+
+                // Add search functionality
+                if (payload.searchKey) {
+                    whereClause[Op.or] = [
+                        { orderNumber: { [Op.like]: `%${payload.searchKey}%` } },
+                        { customerName: { [Op.like]: `%${payload.searchKey}%` } },
+                        { customerPhone: { [Op.like]: `%${payload.searchKey}%` } },
+                        { customerEmail: { [Op.like]: `%${payload.searchKey}%` } }
+                    ];
+                }
+
+                if (payload.shopId) {
+                    whereClause.UserId = payload.shopId
+                }
+
+                // Add other filters
+                if (payload.orderStatus) whereClause.orderStatus = payload.orderStatus;
+                if (payload.paymentStatus) whereClause.paymentStatus = payload.paymentStatus;
+                if (payload.paymentMethod) whereClause.paymentMethod = payload.paymentMethod;
+
+                // Add date range filter
+                if (payload.startDate && payload.endDate) {
+                    whereClause.orderDate = {
+                        [Op.between]: [
+                            new Date(new Date(payload.startDate).setHours(0, 0, 0)),
+                            new Date(new Date(payload.endDate).setHours(23, 59, 59))
+                        ]
+                    };
+                }
+            } else {
+                throw new Error("Invalid delete request: provide 'ids' or 'all' with filters");
+            }
+
+            // 2. Fetch orders with items for stock restoration
+            const orders = await Order.findAll({
+                where: whereClause,
+                include: [{
+                    model: OrderItem,
+                    include: [
+                        { model: Product },
+                        { model: ProductVariant }
+                    ]
+                }],
+                transaction
+            });
+
+            if (!orders || orders.length === 0) {
+                await transaction.rollback();
+                return { status: false, message: 'No orders found to delete' };
+            }
+
+            // 3. Process deletion and stock restoration for each order
+            let deletedCount = 0;
+
+            for (const order of orders) {
+                // Restore stock for all order items
+                if (order.OrderItems && order.OrderItems.length > 0) {
+                    for (const orderItem of order.OrderItems) {
+                        const productId = orderItem.ProductId;
+                        const variantId = orderItem.ProductVariantId;
+                        const quantity = orderItem.quantity;
+
+                        if (variantId) {
+                            const variant = await ProductVariant.findByPk(variantId, { transaction });
+                            if (variant) {
+                                await variant.increment('quantity', { by: quantity, transaction });
+
+                                await StockHistory.create({
+                                    type: 'adjustment',
+                                    quantity: quantity,
+                                    previousStock: variant.quantity,
+                                    newStock: variant.quantity + quantity,
+                                    ProductId: productId,
+                                    ProductVariantId: variantId,
+                                    OrderId: order.id,
+                                    UserId: order.UserId,
+                                    note: `Order ${order.orderNumber} deleted (Bulk) - Stock restored`
+                                }, { transaction });
+                            }
+                        } else if (productId) {
+                            const product = await Product.findByPk(productId, { transaction });
+                            if (product) {
+                                await product.increment('stock', { by: quantity, transaction });
+
+                                await StockHistory.create({
+                                    type: 'adjustment',
+                                    quantity: quantity,
+                                    previousStock: product.stock,
+                                    newStock: product.stock + quantity,
+                                    ProductId: productId,
+                                    OrderId: order.id,
+                                    UserId: order.UserId,
+                                    note: `Order ${order.orderNumber} deleted (Bulk) - Stock restored`
+                                }, { transaction });
+                            }
+                        }
+                    }
+                }
+
+                deletedCount++;
+            }
+
+            // Delete associations and orders in bulk
+            const orderIds = orders.map(o => o.id);
+
+            await StuffCommission.destroy({
+                where: { OrderId: { [Op.in]: orderIds } },
+                transaction
+            });
+
+            await OrderItem.destroy({
+                where: { OrderId: { [Op.in]: orderIds } },
+                transaction
+            });
+
+            await Order.destroy({
+                where: { id: { [Op.in]: orderIds } },
+                transaction
+            });
+
+            await transaction.commit();
+
+            return {
+                status: true,
+                message: `${deletedCount} orders deleted successfully`,
+                data: {
+                    deletedCount,
+                    shopId: payload.shopId
+                }
+            };
+
+        } catch (error) {
+            await transaction.rollback();
+            return { status: false, message: 'Failed to delete orders', error: error.message };
+        }
+    },
+
     async getCustomerOrders(customerId, accessibleShopIds) {
         try {
             const orders = await Order.findAll({
