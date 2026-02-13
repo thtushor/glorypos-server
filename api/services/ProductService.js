@@ -1,5 +1,5 @@
 const { Product, Category, Brand, Unit, ProductVariant, Color, Size, User } = require('../entity');
-const { Op } = require('sequelize');
+const { Op, literal } = require('sequelize');
 
 /**
  * Generate a unique short code
@@ -158,7 +158,7 @@ const ProductService = {
             ? query.sortOrder.toUpperCase()
             : defaultSortDirection;
 
-        const orderClause = [[currentSortField, currentSortOrder]];
+        let orderClause = [[currentSortField, currentSortOrder]];
 
         // ✅ SKU Filter - Handle separately
         let skuFilter = null;
@@ -181,15 +181,39 @@ const ProductService = {
 
         // Add search functionality
         if (query.searchKey) {
-            const searchConditions = [
-                { name: { [Op.like]: `%${query.searchKey}%` } },
-                { code: { [Op.like]: `%${query.searchKey}%` } },
-                { sku: { [Op.like]: `%${query.searchKey}%` } },
-                { description: { [Op.like]: `%${query.searchKey}%` } },
-                { modelNo: { [Op.like]: `%${query.searchKey}%` } }
-            ];
+            const searchKeyRaw = query.searchKey.trim();
 
-            whereClause[Op.or] = searchConditions;
+            if (searchKeyRaw) {
+                const searchTokens = searchKeyRaw.split(/\s+/);
+
+                const searchConditions = [
+                    // Smart search for name: Match ALL tokens in any order (e.g., "chick burg" -> matches "Chicken Burger")
+                    {
+                        name: {
+                            [Op.and]: searchTokens.map(token => ({
+                                [Op.like]: `%${token}%`
+                            }))
+                        }
+                    },
+                    { code: { [Op.like]: `%${searchKeyRaw}%` } },
+                    { sku: { [Op.like]: `%${searchKeyRaw}%` } },
+                    { modelNo: { [Op.like]: `%${searchKeyRaw}%` } }
+                ];
+
+                whereClause[Op.or] = searchConditions;
+
+                // Prioritize exact match > starts with > contains
+                const safeKey = searchKeyRaw.replace(/'/g, "''");
+                orderClause.unshift([
+                    literal(`CASE 
+                        WHEN \`Product\`.\`name\` = '${safeKey}' THEN 0 
+                        WHEN \`Product\`.\`name\` LIKE '${safeKey}%' THEN 1 
+                        WHEN \`Product\`.\`name\` LIKE '%${safeKey}%' THEN 2 
+                        ELSE 3 
+                    END`),
+                    'ASC'
+                ]);
+            }
         }
 
         // Add other filters if provided (exclude pagination, search, sorting and filter params)
