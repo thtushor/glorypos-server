@@ -1175,7 +1175,8 @@ const OrderService = {
                             include: [
                                 { model: Color },
                                 { model: User },
-                                { model: Size }
+                                { model: Size },
+                                { model: Category }
                             ]
                         },
                         {
@@ -1183,7 +1184,7 @@ const OrderService = {
                             include: [
                                 { model: Product },
                                 { model: Color },
-                                { model: Size }
+                                { model: Size },
                             ]
                         }
                     ]
@@ -1263,12 +1264,8 @@ const OrderService = {
 
                         // Build details string with discount info
                         let detailParts = [];
-                        if (userData?.shopType === 'restaurant') {
-                            if (sizeName) {
-                                detailParts.push(sizeName);
-                            }
-                        } else if (colorName || sizeName) {
-                            detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
+                        if (item.Product?.Category?.name) {
+                            detailParts.push(item.Product.Category.name);
                         }
                         if (discountType && discountAmount > 0) {
                             const discountText = discountType === 'percentage'
@@ -1298,12 +1295,8 @@ const OrderService = {
 
                         // Build details string with discount info
                         let detailParts = [];
-                        if (userData?.shopType === 'restaurant') {
-                            if (sizeName) {
-                                detailParts.push(sizeName);
-                            }
-                        } else if (colorName || sizeName) {
-                            detailParts.push(colorName && sizeName ? `${colorName} - ${sizeName}` : (colorName || sizeName));
+                        if (item.Product?.Category?.name) {
+                            detailParts.push(item.Product.Category.name);
                         }
                         if (discountType && discountAmount > 0) {
                             const discountText = discountType === 'percentage'
