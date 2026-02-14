@@ -16,6 +16,8 @@ const {
 const sequelize = require('../db');
 const { Op, fn, col, literal } = require('sequelize');
 const StuffCommissionService = require('./StuffCommissionService');
+const NotificationService = require('./NotificationService');
+
 
 const resolveShopFilter = (accessibleShopIds = [], requestedShopId) => {
     const normalizedIds = (accessibleShopIds || [])
@@ -369,6 +371,88 @@ const OrderService = {
             }
 
             await transaction.commit();
+
+            // --- Notifications Trigger ---
+            try {
+                const shopId = order.UserId;
+                // const io = require('../serverSocket').io; // Socket optional
+
+
+                // A) Order Created Notification (Only for new orders)
+                if (!orderId) {
+                    await NotificationService.createNotification({
+                        shopId,
+                        title: 'New Order Created',
+                        message: `Order #${order.orderNumber} has been created.`,
+                        type: 'ORDER_CREATED',
+                        link: `/orders/${order.id}`,
+                        referenceId: order.id.toString(),
+                        referenceType: 'order'
+                    });
+                }
+
+                // B) Stock Alert Notification
+                for (const item of validatedItems) {
+                    const { productId, variantId, product, variant } = item;
+
+                    let currentItemStock = 0;
+                    let alertQty = 0;
+                    let itemName = '';
+                    let referenceId = '';
+                    let stockType = 'product';
+
+                    if (variantId) {
+                        const freshVariant = await ProductVariant.findByPk(variantId);
+                        if (freshVariant) {
+                            currentItemStock = freshVariant.quantity;
+                            alertQty = freshVariant.alertQuantity;
+                            itemName = `${product.name} (${freshVariant.sku})`;
+                            referenceId = variantId.toString();
+                        }
+                    } else {
+                        const freshProduct = await Product.findByPk(productId);
+                        if (freshProduct) {
+                            currentItemStock = freshProduct.stock;
+                            alertQty = freshProduct.alertQuantity;
+                            itemName = product.name;
+                            referenceId = productId.toString();
+                        }
+                    }
+
+                    if (!referenceId) continue;
+
+                    if (currentItemStock === 0) {
+                        const existing = await NotificationService.findUnreadStockAlert(shopId, referenceId, 'STOCK_OUT');
+                        if (!existing) {
+                            await NotificationService.createNotification({
+                                shopId,
+                                title: 'Stock Out Alert',
+                                message: `Product ${itemName} is out of stock.`,
+                                type: 'STOCK_OUT',
+                                link: `/inventory/products/${productId}`,
+                                referenceId: referenceId,
+                                referenceType: 'product'
+                            });
+                        }
+                    } else if (currentItemStock <= alertQty) {
+                        const existing = await NotificationService.findUnreadStockAlert(shopId, referenceId, 'STOCK_LOW');
+                        if (!existing) {
+                            await NotificationService.createNotification({
+                                shopId,
+                                title: 'Low Stock Alert',
+                                message: `Product ${itemName} is low in stock.`,
+                                type: 'STOCK_LOW',
+                                link: `/inventory/products/${productId}`,
+                                referenceId: referenceId,
+                                referenceType: 'product'
+                            });
+                        }
+                    }
+                }
+
+            } catch (notifyError) {
+                console.error("Order Notification Error:", notifyError);
+            }
 
             return {
                 status: true,
