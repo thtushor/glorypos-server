@@ -35,6 +35,18 @@ const SchedulerService = require("./services/SchedulerService");
 // Configure CORS to allow credentials (cookies)
 app.use(cors());
 
+const http = require("http");
+const socket = require("./socket");
+
+const server = http.createServer(app);
+const io = socket.init(server);
+
+// Make io accessible to our routers
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 app.use(express.json());
 app.use(cookiesParser());
 
@@ -77,6 +89,6 @@ app.use(errorHandler);
 SchedulerService.checkExpiredSubscriptions.start();
 SchedulerService.sendRenewalReminders.start();
 
-app.listen(port, () => console.log(`Server ready on port ${port}.`));
+server.listen(port, () => console.log(`Server ready on port ${port}.`));
 
 module.exports = app;

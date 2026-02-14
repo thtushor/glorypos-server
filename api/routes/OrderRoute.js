@@ -7,8 +7,13 @@ const { addShopAccess } = require('../middleware/shopAccessMiddleware');
 const router = express.Router();
 
 // Create new order
+// Create new order
 router.post('/', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const result = await OrderService.create(req.body, req.user.id, req.accessibleShopIds);
+    if (result.status && req.io) {
+        req.io.to(result.data.UserId).emit('new-order', result.data);
+        req.io.emit('new-order', result.data);
+    }
     res.status(result.status ? 201 : 400).json(result);
 }));
 

@@ -4,6 +4,8 @@ const {
 } = require('../entity');
 const { Op } = require('sequelize');
 
+const socket = require('../socket');
+
 const NotificationService = {
     /**
      * Create a new notification
@@ -25,6 +27,16 @@ const NotificationService = {
                 reference_id: referenceId,
                 reference_type: referenceType
             });
+
+            // Emit socket notification
+            try {
+                const io = socket.getIO();
+                if (io) {
+                    io.to(shopId.toString()).emit('new-notification', notification);
+                }
+            } catch (err) {
+                console.warn("Socket emission failed:", err.message);
+            }
 
             return {
                 status: true,
