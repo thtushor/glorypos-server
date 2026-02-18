@@ -225,9 +225,12 @@ const ProductService = {
         });
 
 
-        // ✅ If SKU filter exists, we need to find products with matching variants too
-        let productIdsFromVariants = [];
+        // ✅ If SKU filter exists, we need to find products with matching variants and categories too
         if (skuFilter) {
+            let productIdsFromVariants = [];
+            let categoryMatchId = null;
+
+            // 1. Search variants
             const variantsWithSku = await ProductVariant.findAll({
                 where: { sku: skuFilter },
                 attributes: ['ProductId'],
@@ -235,15 +238,45 @@ const ProductService = {
             });
             productIdsFromVariants = variantsWithSku.map(v => v.ProductId);
 
-            // Modify where clause to include products with matching variants
-            if (productIdsFromVariants.length > 0) {
+            // 2. Search Categories if prefix matches
+            if (skuFilter.startsWith('CAT-')) {
+                const category = await Category.findOne({
+                    where: {
+                        barcode: skuFilter,
+                        UserId: { [Op.in]: accessibleShopIds }
+                    },
+                    attributes: ['id']
+                });
+                if (category) {
+                    categoryMatchId = category.id;
+                }
+            }
+
+            // 3. Modify where clause to include all matches
+            if (productIdsFromVariants.length > 0 || categoryMatchId) {
                 // Remove the direct sku filter
                 delete whereClause.sku;
-                // Add OR condition for product sku or product id in variant matches
-                whereClause[Op.or] = [
-                    { sku: skuFilter },
-                    { id: { [Op.in]: productIdsFromVariants } }
-                ];
+
+                const orConditions = [{ sku: skuFilter }];
+
+                if (productIdsFromVariants.length > 0) {
+                    orConditions.push({ id: { [Op.in]: productIdsFromVariants } });
+                }
+
+                if (categoryMatchId) {
+                    orConditions.push({ CategoryId: categoryMatchId });
+                }
+
+                // Add or combine with existing Op.or if present (from searchKey)
+                if (whereClause[Op.or]) {
+                    whereClause[Op.and] = [
+                        { [Op.or]: whereClause[Op.or] },
+                        { [Op.or]: orConditions }
+                    ];
+                    delete whereClause[Op.or];
+                } else {
+                    whereClause[Op.or] = orConditions;
+                }
             }
         }
 
