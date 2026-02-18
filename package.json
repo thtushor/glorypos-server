@@ -8,7 +8,8 @@
     "dev": "nodemon api/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "migrate": "sequelize-cli db:migrate",
-    "migrate:undo": "sequelize-cli db:migrate:undo"
+    "migrate:undo": "sequelize-cli db:migrate:undo",
+    "fill-category-barcodes": "node scripts/fillCategoryBarcodes.js"
   },
   "author": "",
   "license": "ISC",

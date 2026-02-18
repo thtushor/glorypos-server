@@ -31,7 +31,20 @@ const Category = sequelize.define(
             type: Sequelize.ENUM("active", "inactive"),
             defaultValue: "active",
             comment: "Category status",
+        },
+        barcode: {
+            type: Sequelize.STRING,
+            allowNull: true,
+            comment: "Auto-generated unique barcode for the category",
         }
+    },
+    {
+        indexes: [
+            {
+                unique: true,
+                fields: ['barcode', 'UserId']
+            }
+        ]
     }
 );
 

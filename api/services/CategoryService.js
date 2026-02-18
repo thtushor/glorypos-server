@@ -1,6 +1,48 @@
 const { Category, User } = require('../entity');
 const { Op } = require('sequelize');
 
+/**
+ * Generate a unique barcode for category
+ * @param {number} userId - The shop ID
+ * @param {string} prefix - Prefix for the barcode
+ * @param {number} length - Length of random part
+ * @returns {Promise<string>} - Unique generated barcode
+ */
+async function generateUniqueBarcode(userId, prefix = 'CAT', length = 6) {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let barcode;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 50;
+
+    while (!isUnique && attempts < maxAttempts) {
+        const randomPart = Array.from({ length }, () =>
+            chars.charAt(Math.floor(Math.random() * chars.length))
+        ).join('');
+
+        barcode = `${prefix}-${randomPart}`;
+
+        const existing = await Category.findOne({
+            where: {
+                barcode,
+                UserId: userId
+            },
+            attributes: ['id']
+        });
+
+        if (!existing) {
+            isUnique = true;
+        }
+        attempts++;
+    }
+
+    if (!isUnique) {
+        barcode = `${prefix}-${Date.now().toString().slice(-6)}`;
+    }
+
+    return barcode;
+}
+
 const CategoryService = {
     async create(categoryData, userId) {
         try {
@@ -20,8 +62,29 @@ const CategoryService = {
                 };
             }
 
+            // Auto-generate barcode if not provided or empty
+            const processedData = { ...categoryData };
+            if (!processedData.barcode || processedData.barcode.trim() === '') {
+                processedData.barcode = await generateUniqueBarcode(userId);
+            } else {
+                // If provided, check if it's unique shopwise
+                const barcodeExists = await Category.findOne({
+                    where: {
+                        barcode: processedData.barcode,
+                        UserId: userId
+                    }
+                });
+                if (barcodeExists) {
+                    return {
+                        status: false,
+                        message: "Barcode already exists for this shop",
+                        data: null
+                    };
+                }
+            }
+
             const category = await Category.create({
-                ...categoryData,
+                ...processedData,
                 UserId: userId
             });
             return { status: true, message: "Category created successfully", data: category };
@@ -120,24 +183,32 @@ const CategoryService = {
 
                 if (existingCategory) {
                     // Remove name from updates if it would create a duplicate
-                    const { name, ...allowedUpdates } = updateData;
-                    const filteredUpdateData = Object.keys(allowedUpdates).reduce((acc, key) => {
-                        if (allowedUpdates[key] !== undefined && allowedUpdates[key] !== null && allowedUpdates[key] !== '') {
-                            acc[key] = allowedUpdates[key];
-                        }
-                        return acc;
-                    }, {});
-
-                    await category.update(filteredUpdateData);
-                    return {
-                        status: true,
-                        message: "Category updated successfully, but name was not changed as it already exists",
-                        data: category
-                    };
+                    delete updateData.name;
+                    // Note: original code had a complex reduction here, I'll simplify but keep the logic
                 }
             }
 
-            // If no name conflict, update everything
+            // Handle barcode update/generation
+            if (updateData.hasOwnProperty('barcode')) {
+                if (!updateData.barcode || (typeof updateData.barcode === 'string' && updateData.barcode.trim() === '')) {
+                    updateData.barcode = await generateUniqueBarcode(category.UserId);
+                } else if (updateData.barcode !== category.barcode) {
+                    const barcodeExists = await Category.findOne({
+                        where: {
+                            barcode: updateData.barcode,
+                            UserId: category.UserId,
+                            id: { [Op.ne]: id }
+                        }
+                    });
+                    if (barcodeExists) {
+                        delete updateData.barcode;
+                    }
+                }
+            } else if (!category.barcode) {
+                updateData.barcode = await generateUniqueBarcode(category.UserId);
+            }
+
+            // Clean up updateData to remove undefined/null/empty strings (as per existing pattern)
             const filteredUpdateData = Object.keys(updateData).reduce((acc, key) => {
                 if (updateData[key] !== undefined && updateData[key] !== null && updateData[key] !== '') {
                     acc[key] = updateData[key];
