@@ -110,6 +110,7 @@ const CategoryService = {
             if (query.searchKey) {
                 whereClause[Op.or] = [
                     { name: { [Op.like]: `%${query.searchKey}%` } },
+                    { barcode: { [Op.like]: `%${query.searchKey}%` } },
                     { description: { [Op.like]: `%${query.searchKey}%` } }
                 ];
             }
