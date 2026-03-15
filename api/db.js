@@ -58,7 +58,7 @@ if (process.env.NODE_ENV === 'development') {
 // force: true
 // alter: true
 
-const syncOptions = { alter: true };
+const syncOptions = { alter: false };
 
 sequelize
     .sync(syncOptions)
