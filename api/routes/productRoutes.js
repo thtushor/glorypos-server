@@ -22,11 +22,33 @@ router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, as
     res.status(result.status ? 200 : 400).json(result);
 }));
 
-// Public route for performance testing
+// Public route for performance testing with logging
 router.get('/public-list', requestHandler(null, async (req, res) => {
+    const startTime = Date.now();
+    const logMessage = `[${new Date().toISOString()}] GET /api/products/public-list - Query: ${JSON.stringify(req.query)}\n`;
+    
+    // Log to console
+    console.log(logMessage.trim());
+    
+    // Log to file
+    const fs = require('fs');
+    const path = require('path');
+    const logDir = path.join(__dirname, '../../logs');
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir);
+    }
+    fs.appendFileSync(path.join(logDir, 'performance_test.log'), logMessage);
+
     const result = await ProductService.getAll(req.query, null);
+    
+    const duration = Date.now() - startTime;
+    const endLog = `[${new Date().toISOString()}] Completed /public-list in ${duration}ms\n`;
+    console.log(endLog.trim());
+    fs.appendFileSync(path.join(logDir, 'performance_test.log'), endLog);
+
     res.status(result.status ? 200 : 400).json(result);
 }));
+
 
 
 router.get('/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
