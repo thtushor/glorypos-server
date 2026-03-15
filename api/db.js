@@ -26,12 +26,17 @@ const dbConfig = {
     logging: false,
     port: process.env.PORT,
     pool: {
-        max: 10,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
+        max: 30,             // Increased max connections for concurrent requests
+        min: 5,              // Keep 5 connections always warm for faster response times
+        acquire: 60000,      // Maximum time (ms) that pool will try to get connection before throwing error
+        idle: 10000,         // Maximum time (ms) that a connection can be idle before being released
+        evict: 1000          // Time (ms) interval to check for idle/stale connections
+    },
+    dialectOptions: {
+        connectTimeout: 60000 // 60s timeout for initial connection attempt
     }
 };
+
 
 if (process.env.NODE_ENV === 'development') {
     sequelize = new Sequelize(
