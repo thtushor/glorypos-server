@@ -515,12 +515,8 @@ const OrderService = {
                 };
             }
 
-            // Get total count for pagination
-            const totalCount = await Order.count({ where: whereClause });
-            const totalPages = Math.ceil(totalCount / pageSize);
-
             // Get paginated orders with related data
-            const orders = await Order.findAll({
+            const { count: totalCount, rows: orders } = await Order.findAndCountAll({
                 where: whereClause,
                 include: [{
                     model: OrderItem,
@@ -553,8 +549,12 @@ const OrderService = {
                 ],
                 order: [['orderDate', 'DESC']],
                 limit: pageSize,
-                offset: offset
+                offset: offset,
+                distinct: true // Ensure count is correct when using includes
             });
+
+            const totalPages = Math.ceil(totalCount / pageSize);
+
 
             // Calculate order-wise statistics
             const ordersWithStats = orders.map(order => {
@@ -1176,6 +1176,10 @@ const OrderService = {
 
     async getSalesReport(accessibleShopIds, query = {}) {
         try {
+            const page = parseInt(query.page) || 1;
+            const pageSize = parseInt(query.pageSize) || 20;
+            const offset = (page - 1) * pageSize;
+
             const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
             const whereClause = { UserId: { [Op.in]: targetShopIds } };
             if (query.startDate && query.endDate) {
@@ -1190,6 +1194,9 @@ const OrderService = {
                 };
             }
 
+            // Get total count for pagination
+            const totalCount = await Order.count({ where: whereClause });
+            const totalPages = Math.ceil(totalCount / pageSize);
 
             const orders = await Order.findAll({
                 where: whereClause,
@@ -1206,8 +1213,11 @@ const OrderService = {
                         }
                     ]
                 }],
-                order: [['orderDate', 'DESC']]
+                order: [['orderDate', 'DESC']],
+                limit: pageSize,
+                offset: offset
             });
+
 
             const report = orders.map(order => ({
                 orderNumber: order.orderNumber,
@@ -1232,7 +1242,15 @@ const OrderService = {
             return {
                 status: true,
                 message: "Sales report generated successfully",
-                data: report
+                data: report,
+                pagination: {
+                    page,
+                    pageSize,
+                    totalPages,
+                    totalItems: totalCount,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1
+                }
             };
         } catch (error) {
             return {
@@ -2006,7 +2024,7 @@ const OrderService = {
             });
 
             const stockByVariant = await ProductVariant.findAll({
-                attributes: ["id", "sku", "quantity", "ColorId", "SizeId"],
+                attributes: ["id", "sku", "quantity", "ColorId", "SizeId", "alertQuantity"],
                 include: [
                     {
                         model: Product,
@@ -2024,7 +2042,10 @@ const OrderService = {
                         required: false,
                     },
                 ],
+                raw: true,
+                nest: true // Keep nested objects easy to access
             });
+
 
             const salesByVariantMap = salesByVariant.reduce((acc, row) => {
                 acc[row.ProductVariantId] = {
@@ -2455,15 +2476,15 @@ const OrderService = {
 
     // Generate sequential 8-digit order number (max 99,999,999 orders)
     async generateOrderNumber(shopId, transaction) {
-        // Find the latest order by order number
+        // Find the latest order by order number - simplified query
         const latestOrder = await Order.findOne({
+            attributes: ['orderNumber'],
             where: {
-                orderNumber: {
-                    [Op.regexp]: '^[0-9]+$' // Only numeric order numbers
-                }
+                orderNumber: { [Op.ne]: null }
             },
             order: [['orderNumber', 'DESC']],
-            transaction
+            transaction,
+            raw: true
         });
 
         let nextId = 1;
@@ -2480,6 +2501,7 @@ const OrderService = {
 
         return String(nextId).padStart(8, '0');
     }
+
 };
 
 module.exports = OrderService;

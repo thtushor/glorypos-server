@@ -1,8 +1,11 @@
 require("dotenv").config();
 
 const express = require("express");
+const compression = require("compression");
 const cors = require("cors");
 const app = express();
+
+app.use(compression());
 const path = require("path");
 const cookiesParser = require("cookie-parser");
 const authRoutes = require("./routes/authRoutes");

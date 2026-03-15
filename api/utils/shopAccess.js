@@ -1,5 +1,9 @@
 const { User } = require('../entity');
 
+// Simple in-memory cache for shop access IDs (valid for 2 minutes)
+const shopAccessCache = new Map();
+const CACHE_TTL = 2 * 60 * 1000;
+
 /**
  * Get all accessible shop IDs for a given user
  * This includes the user's own shop and all shops that share the same parent
@@ -8,6 +12,13 @@ const { User } = require('../entity');
  */
 async function getAccessibleShopIds(userId) {
     try {
+        const now = Date.now();
+        const cached = shopAccessCache.get(userId);
+        
+        if (cached && (now - cached.timestamp < CACHE_TTL)) {
+            return cached.ids;
+        }
+
         // Get the user
         const user = await User.findByPk(userId);
         
@@ -16,22 +27,29 @@ async function getAccessibleShopIds(userId) {
         }
 
         // Determine the parent ID
-        // If user has a parent_id, use that; otherwise, the user is the parent
         const parentId = user.parent_id || user.id;
 
-        // Get all shops that share the same parent (including the parent itself)
+        // Get all shops that share the same parent
         const shops = await User.findAll({
             where: {
                 [require('sequelize').Op.or]: [
-                    { id: parentId }, // The parent shop
-                    { parent_id: parentId } // All child shops
+                    { id: parentId }, 
+                    { parent_id: parentId }
                 ]
             },
-            attributes: ['id']
+            attributes: ['id'],
+            raw: true
         });
 
-        // Return array of shop IDs
-        return shops.map(shop => shop.id);
+        const ids = shops.map(shop => shop.id);
+        
+        // Update cache
+        shopAccessCache.set(userId, {
+            ids,
+            timestamp: now
+        });
+
+        return ids;
     } catch (error) {
         console.error('Error getting accessible shop IDs:', error);
         throw error;

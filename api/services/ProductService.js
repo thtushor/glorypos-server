@@ -225,59 +225,40 @@ const ProductService = {
         });
 
 
-        // ✅ If SKU filter exists, we need to find products with matching variants and categories too
+        // ✅ If SKU filter exists, search in both Products and ProductVariants
         if (skuFilter) {
-            let productIdsFromVariants = [];
-            let categoryMatchId = null;
-
-            // 1. Search variants
-            const variantsWithSku = await ProductVariant.findAll({
+            const variantProductIds = await ProductVariant.findAll({
                 where: { sku: skuFilter },
                 attributes: ['ProductId'],
                 raw: true
-            });
-            productIdsFromVariants = variantsWithSku.map(v => v.ProductId);
+            }).then(variants => variants.map(v => v.ProductId));
 
-            // 2. Search Categories if prefix matches
+            const orConditions = [{ sku: skuFilter }];
+            if (variantProductIds.length > 0) {
+                orConditions.push({ id: { [Op.in]: variantProductIds } });
+            }
+
             if (skuFilter.startsWith('CAT-')) {
                 const category = await Category.findOne({
-                    where: {
-                        barcode: skuFilter,
-                        UserId: { [Op.in]: accessibleShopIds }
-                    },
-                    attributes: ['id']
+                    where: { barcode: skuFilter, UserId: { [Op.in]: accessibleShopIds } },
+                    attributes: ['id'],
+                    raw: true
                 });
                 if (category) {
-                    categoryMatchId = category.id;
+                    orConditions.push({ CategoryId: category.id });
                 }
             }
 
-            // 3. Modify where clause to include all matches
-            if (productIdsFromVariants.length > 0 || categoryMatchId) {
-                // Remove the direct sku filter
-                delete whereClause.sku;
-
-                const orConditions = [{ sku: skuFilter }];
-
-                if (productIdsFromVariants.length > 0) {
-                    orConditions.push({ id: { [Op.in]: productIdsFromVariants } });
-                }
-
-                if (categoryMatchId) {
-                    orConditions.push({ CategoryId: categoryMatchId });
-                }
-
-                // Add or combine with existing Op.or if present (from searchKey)
-                if (whereClause[Op.or]) {
-                    whereClause[Op.and] = [
-                        { [Op.or]: whereClause[Op.or] },
-                        { [Op.or]: orConditions }
-                    ];
-                    delete whereClause[Op.or];
-                } else {
-                    whereClause[Op.or] = orConditions;
-                }
+            if (whereClause[Op.or]) {
+                whereClause[Op.and] = [
+                    { [Op.or]: whereClause[Op.or] },
+                    { [Op.or]: orConditions }
+                ];
+                delete whereClause[Op.or];
+            } else {
+                whereClause[Op.or] = orConditions;
             }
+            delete whereClause.sku;
         }
 
 

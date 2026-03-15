@@ -20,50 +20,44 @@ require('dotenv').config();
 
 let sequelize;
 
+const dbConfig = {
+    host: process.env.NODE_ENV === 'development' ? process.env.MYSQLHOST_DEV : process.env.MYSQLHOST,
+    dialect: 'mysql',
+    logging: false,
+    port: process.env.PORT,
+    pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+    }
+};
+
 if (process.env.NODE_ENV === 'development') {
-    // sequelize = new Sequelize(
-    //     "mysql://moviesho_fashionpos:shufol@1115@103.113.13.67:3306/moviesho_fashion_glory_pos"
-    // );
     sequelize = new Sequelize(
         process.env.DATABASE_DEV,
         process.env.MYSQLUSERNAME_DEV,
         process.env.MYSQLPASSWORD_DEV,
-        {
-            host: process.env.MYSQLHOST_DEV,
-            dialect: 'mysql',
-            logging: false,
-            port: process.env.PORT
-        }
+        dbConfig
     );
 } else {
-    // sequelize = new Sequelize(
-    //     "mysql://uog4ysk637odggcp:s9rfzvRg1MV5s6G55KI5@beukpt9myo2zezgwjcj0-mysql.services.clever-cloud.com:3306/beukpt9myo2zezgwjcj0", {
-    //     logging: false
-    // }
-    // );
-
     sequelize = new Sequelize(
         process.env.DATABASE,
         process.env.MYSQLUSERNAME,
         process.env.MYSQLPASSWORD,
-        {
-            host: process.env.MYSQLHOST,
-            dialect: 'mysql',
-            logging: false,
-            port: process.env.PORT
-        }
+        dbConfig
     );
-
-
 }
+
 
 // force: true
 // alter: true
 
+const syncOptions = { alter: process.env.NODE_ENV === 'development' };
+
 sequelize
-    // .sync({ force: false, })   // ✅ NO ALTER
-    // .sync({ force: true, alter: true })   // ✅ NO ALTER
-    .sync({ alter: true, })
+    .sync(syncOptions)
+
     .then(async (res) => {
         console.log("Database Connected", process.env.PORT);
     })
