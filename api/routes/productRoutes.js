@@ -22,6 +22,13 @@ router.get('/', AuthService.authenticate, addShopAccess, requestHandler(null, as
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+// Public route for performance testing
+router.get('/public-list', requestHandler(null, async (req, res) => {
+    const result = await ProductService.getAll(req.query, null);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
+
 router.get('/:id', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
     const result = await ProductService.getById(req.params.id, req.accessibleShopIds);
     res.status(result.status ? 200 : 404).json(result);

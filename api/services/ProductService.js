@@ -100,16 +100,23 @@ const ProductService = {
         const pageSize = parseInt(query.pageSize) || 10;
         const offset = (page - 1) * pageSize;
 
-        // Build where clause with shop access
-        const whereClause = { UserId: { [Op.in]: accessibleShopIds } };
-
-        // Add shopId filter if provided
-        if (query.shopId) {
-            const shopId = parseInt(query.shopId);
-            if (accessibleShopIds.includes(shopId)) {
-                whereClause.UserId = shopId;
+        // Build where clause with shop access (optional for testing)
+        let whereClause = {};
+        if (accessibleShopIds) {
+            whereClause.UserId = { [Op.in]: accessibleShopIds };
+            
+            // Add shopId filter if provided and accessible
+            if (query.shopId) {
+                const shopId = parseInt(query.shopId);
+                if (accessibleShopIds.includes(shopId)) {
+                    whereClause.UserId = shopId;
+                }
             }
+        } else if (query.shopId) {
+            // Public access: allow specific shop filter
+            whereClause.UserId = parseInt(query.shopId);
         }
+
 
         if (query.status) {
             whereClause.status = query.status;
