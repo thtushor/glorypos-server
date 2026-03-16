@@ -134,32 +134,50 @@ const OrderService = {
                     paymentStatus
                 }, { transaction, where: { id: orderId } });
             } else {
-                // Generate 8-digit unique order number
-                const orderNumber = await this.generateOrderNumber(orderData.shopId || userId, transaction);
+                // Generate 8-digit unique order number with retry on rare collision
+                let orderNumber;
+                let creationSuccess = false;
+                let attempts = 0;
 
-                // Create order
-                order = await Order.create({
-                    ...orderData,
-                    customerPhone: orderData?.customerPhone || orderData?.phone || null,
-                    customerEmail: orderData?.customerEmail || orderData?.email || null,
-                    tableNumber,
-                    guestNumber,
-                    specialNotes,
-                    orderNumber,
-                    UserId: userId,
-                    orderDate: new Date(),
-                    subtotal,
-                    tax,
-                    discount,
-                    total,
-                    cashAmount,
-                    cardAmount,
-                    walletAmount,
-                    paidAmount,
-                    paymentMethod,
-                    orderStatus: paymentStatus === "pending" ? "processing" : "completed",
-                    paymentStatus
-                }, { transaction });
+                while (!creationSuccess && attempts < 5) {
+                    try {
+                        attempts++;
+                        orderNumber = await this.generateOrderNumber(orderData.shopId || userId, transaction);
+
+                        // Create order
+                        order = await Order.create({
+                            ...orderData,
+                            customerPhone: orderData?.customerPhone || orderData?.phone || null,
+                            customerEmail: orderData?.customerEmail || orderData?.email || null,
+                            tableNumber,
+                            guestNumber,
+                            specialNotes,
+                            orderNumber,
+                            UserId: userId,
+                            orderDate: new Date(),
+                            subtotal,
+                            tax,
+                            discount,
+                            total,
+                            cashAmount,
+                            cardAmount,
+                            walletAmount,
+                            paidAmount,
+                            paymentMethod,
+                            orderStatus: paymentStatus === "pending" ? "processing" : "completed",
+                            paymentStatus
+                        }, { transaction });
+                        creationSuccess = true;
+                    } catch (error) {
+                        // If it's a unique constraint error on orderNumber, retry
+                        if (error.name === 'SequelizeUniqueConstraintError' && 
+                            error.errors.some(e => e.path === 'orderNumber') && 
+                            attempts < 5) {
+                            continue;
+                        }
+                        throw error;
+                    }
+                }
             }
 
             // Identify removed items (items that existed but are not in the new data)
@@ -2476,6 +2494,16 @@ const OrderService = {
 
     // Generate sequential 8-digit order number (max 99,999,999 orders)
     async generateOrderNumber(shopId, transaction) {
+        // Serialization lock: Lock the first existing user record to globalize order number generation.
+        // This ensures absolutely no duplicates even when the Orders table is empty or across concurrent requests.
+        await User.findOne({
+            where: { id: { [Op.gt]: 0 } },
+            order: [['id', 'ASC']],
+            transaction,
+            lock: transaction ? transaction.LOCK.UPDATE : false,
+            raw: true
+        });
+
         // Find the latest order by order number with a lock to prevent concurrent duplicates
         // We cast to UNSIGNED to ensure numeric sorting (9 < 10) even for padded strings
         const latestOrder = await Order.findOne({
