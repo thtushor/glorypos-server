@@ -1733,24 +1733,28 @@ const OrderService = {
 
             const targetShopIds = resolveShopFilter(accessibleShopIds, shopId);
 
-            // --- Date range (start of day / end of day) ---
-            let start = startDate ? new Date(startDate) : new Date();
-            let end = endDate ? new Date(endDate) : new Date();
-
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-
             // --- Shared where clauses ---
             const orderWhere = {
                 UserId: { [Op.in]: targetShopIds },
                 orderStatus: "completed",
-                orderDate: {
-                    [Op.between]: [start, end],
-                },
             };
+
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                orderWhere.orderDate = {
+                    [Op.between]: [start, end],
+                };
+            }
 
             const productWhere = {
                 UserId: { [Op.in]: targetShopIds },
+            };
+            
+            const activeProductWhere = {
+                ...productWhere,
                 status: "active",
             };
 
@@ -1801,44 +1805,57 @@ const OrderService = {
                 ];
             }
 
-            // --- KPIs: today (or date range) sales ---
-            const kpiRow = await OrderItem.findOne({
-                attributes: [
-                    [fn("SUM", col("OrderItem.quantity")), "itemsSold"],
-                    [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
-                    [
-                        fn(
-                            "COUNT",
-                            fn("DISTINCT", col("Order.id"))
-                        ),
-                        "orders",
-                    ],
-                ],
-                include: [
-                    {
-                        model: Order,
-                        attributes: [],
-                        where: orderWhere,
-                    },
-                    {
-                        model: Product,
-                        attributes: [],
-                        where: productWhere,
-                        required: Object.keys(productWhere).length > 0,
-                    },
-                    {
-                        model: ProductVariant,
-                        attributes: [],
-                        where: Object.keys(variantWhere).length ? variantWhere : undefined,
-                        required: Object.keys(variantWhere).length > 0,
-                    },
-                ],
-                raw: true,
-            });
+            // --- KPIs: sales & orders ---
+            let todayItemsSold = 0;
+            let todaySalesAmount = 0;
+            let todayOrders = 0;
 
-            const todayItemsSold = Number(kpiRow?.itemsSold || 0);
-            const todaySalesAmount = Number(kpiRow?.salesAmount || 0);
-            const todayOrders = Number(kpiRow?.orders || 0);
+            const hasProductFilters = productSearch || variantSearch || categoryId || brandId || modelNo || colorId || unitId;
+
+            if (hasProductFilters) {
+                // If filtering by product/category/etc, we must use OrderItem totals
+                const kpiRow = await OrderItem.findOne({
+                    attributes: [
+                        [fn("SUM", col("OrderItem.quantity")), "itemsSold"],
+                        [fn("SUM", col("OrderItem.subtotal")), "salesAmount"],
+                        [fn("COUNT", fn("DISTINCT", col("Order.id"))), "orders"],
+                    ],
+                    include: [
+                        { model: Order, attributes: [], where: orderWhere },
+                        { model: Product, attributes: [], where: productWhere, required: false },
+                        {
+                            model: ProductVariant,
+                            attributes: [],
+                            where: Object.keys(variantWhere).length ? variantWhere : undefined,
+                            required: Object.keys(variantWhere).length > 0,
+                        },
+                    ],
+                    raw: true,
+                });
+                todayItemsSold = Number(kpiRow?.itemsSold || 0);
+                todaySalesAmount = Number(kpiRow?.salesAmount || 0);
+                todayOrders = Number(kpiRow?.orders || 0);
+            } else {
+                // If no product filters, match dashboard stats from Order table directly
+                const orderStats = await Order.findOne({
+                    where: orderWhere,
+                    attributes: [
+                        [fn("SUM", col("total")), "totalSales"],
+                        [fn("COUNT", col("id")), "totalOrders"],
+                    ],
+                    raw: true,
+                });
+                
+                const itemStats = await OrderItem.findOne({
+                    attributes: [[fn("SUM", col("quantity")), "itemsSold"]],
+                    include: [{ model: Order, attributes: [], where: orderWhere }],
+                    raw: true,
+                });
+
+                todaySalesAmount = Number(orderStats?.totalSales || 0);
+                todayOrders = Number(orderStats?.totalOrders || 0);
+                todayItemsSold = Number(itemStats?.itemsSold || 0);
+            }
 
             // --- Date-wise sales / order count within range ---
             const dailyAgg = await OrderItem.findAll({
@@ -1887,7 +1904,7 @@ const OrderService = {
             // --- Low stock & out of stock based on alertQuantity / quantity ---
             const lowStockProducts = await Product.count({
                 where: {
-                    ...productWhere,
+                    ...activeProductWhere,
                     stock: {
                         [Op.gt]: 0,
                         [Op.lte]: col("alertQuantity"),
@@ -1897,7 +1914,7 @@ const OrderService = {
 
             const outOfStockProducts = await Product.count({
                 where: {
-                    ...productWhere,
+                    ...activeProductWhere,
                     stock: 0,
                 },
             });
@@ -1914,7 +1931,7 @@ const OrderService = {
                     {
                         model: Product,
                         attributes: [],
-                        where: productWhere,
+                        where: activeProductWhere,
                     },
                 ],
             });
@@ -1928,7 +1945,7 @@ const OrderService = {
                     {
                         model: Product,
                         attributes: [],
-                        where: productWhere,
+                        where: activeProductWhere,
                     },
                 ],
             });
@@ -2228,8 +2245,8 @@ const OrderService = {
                 data: {
                     filtersUsed: {
                         shopId,
-                        startDate: start,
-                        endDate: end,
+                        startDate: startDate || null,
+                        endDate: endDate || null,
                         productSearch: productSearch || null,
                         variantSearch: variantSearch || null,
                         categoryId: categoryId || null,
@@ -2393,17 +2410,20 @@ const OrderService = {
                 throw new Error("Start date and end date are required");
             }
 
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+
             const whereClause = {
                 UserId: { [Op.in]: targetShopIds },
                 orderStatus: 'completed',
                 orderDate: {
-                    [Op.between]: [new Date(startDate), new Date(endDate)]
+                    [Op.between]: [start, end]
                 }
             };
 
             // Calculate date difference to determine report type
-            const start = new Date(startDate);
-            const end = new Date(endDate);
             const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
             // If date range is within one month, show daily report
