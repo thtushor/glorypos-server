@@ -3,8 +3,14 @@ require("dotenv").config();
 const express = require("express");
 const compression = require("compression");
 const cors = require("cors");
+const helmet = require("helmet");
+const hpp = require("hpp");
+const { limiter } = require("./middleware/security");
+
 const app = express();
 
+app.use(helmet());
+app.use(limiter);
 app.use(compression());
 const path = require("path");
 const cookiesParser = require("cookie-parser");
@@ -35,8 +41,11 @@ const escPosRoutes = require("./routes/escPosRoutes");
 const port = process.env.SERVER_PORT || 3000;
 const SchedulerService = require("./services/SchedulerService");
 
-// Configure CORS to allow credentials (cookies)
-app.use(cors());
+// Configure CORS to allow specific origins and credentials
+app.use(cors({
+  origin: process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',') : true,
+  credentials: true
+}));
 
 const http = require("http");
 const socket = require("./socket");
@@ -51,6 +60,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+app.use(hpp()); // Prevent HTTP Parameter Pollution
 app.use(cookiesParser());
 
 
