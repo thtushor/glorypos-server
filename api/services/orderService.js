@@ -98,9 +98,6 @@ const OrderService = {
 
             paymentStatus = kotPaymentStatus === "pending" ? "pending" : paymentStatus
 
-            // Generate 8-digit order number (YMMDD### format)
-            const orderNumber = await this.generateOrderNumber(orderData.shopId || userId, transaction);
-
             // For order adjustments, fetch existing order items to handle removed items
             let existingOrderItems = [];
             if (orderId) {
@@ -137,6 +134,9 @@ const OrderService = {
                     paymentStatus
                 }, { transaction, where: { id: orderId } });
             } else {
+                // Generate 8-digit unique order number
+                const orderNumber = await this.generateOrderNumber(orderData.shopId || userId, transaction);
+
                 // Create order
                 order = await Order.create({
                     ...orderData,
@@ -2476,14 +2476,16 @@ const OrderService = {
 
     // Generate sequential 8-digit order number (max 99,999,999 orders)
     async generateOrderNumber(shopId, transaction) {
-        // Find the latest order by order number - simplified query
+        // Find the latest order by order number with a lock to prevent concurrent duplicates
+        // We cast to UNSIGNED to ensure numeric sorting (9 < 10) even for padded strings
         const latestOrder = await Order.findOne({
             attributes: ['orderNumber'],
             where: {
                 orderNumber: { [Op.ne]: null }
             },
-            order: [['orderNumber', 'DESC']],
+            order: [[sequelize.literal('CAST(orderNumber AS UNSIGNED)'), 'DESC']],
             transaction,
+            lock: transaction ? transaction.LOCK.UPDATE : false,
             raw: true
         });
 
