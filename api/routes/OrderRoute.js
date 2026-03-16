@@ -92,4 +92,11 @@ router.get('/report/sales-inventory', AuthService.authenticate, addShopAccess, r
     res.status(result.status ? 200 : 400).json(result);
 }));
 
+
+// Mark order as completed
+router.post('/:orderId/complete', AuthService.authenticate, addShopAccess, requestHandler(null, async (req, res) => {
+    const result = await OrderService.markAsCompleted(req.params.orderId, req.accessibleShopIds);
+    res.status(result.status ? 200 : 400).json(result);
+}));
+
 module.exports = router;

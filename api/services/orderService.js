@@ -2512,6 +2512,35 @@ const OrderService = {
         }
     },
 
+    async markAsCompleted(orderId, accessibleShopIds) {
+        try {
+            const order = await Order.findOne({
+                where: {
+                    id: orderId,
+                    UserId: { [Op.in]: accessibleShopIds }
+                }
+            });
+
+            if (!order) {
+                return { status: false, message: "Order not found or unauthorized" };
+            }
+
+            if (order.orderStatus === 'completed') {
+                return { status: true, message: "Order is already completed", data: order };
+            }
+
+            // Update order and payment status
+            await order.update({
+                orderStatus: 'completed',
+                paymentStatus: 'completed'
+            });
+
+            return { status: true, message: "Order marked as completed", data: order };
+        } catch (error) {
+            return { status: false, message: "Failed to mark order as completed", error: error.message };
+        }
+    },
+
     // Generate sequential 8-digit order number (max 99,999,999 orders)
     async generateOrderNumber(shopId, transaction) {
         // Serialization lock: Lock the first existing user record to globalize order number generation.
