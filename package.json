@@ -9,7 +9,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "migrate": "sequelize-cli db:migrate",
     "migrate:undo": "sequelize-cli db:migrate:undo",
-    "fill-category-barcodes": "node scripts/fillCategoryBarcodes.js"
+    "fill-category-barcodes": "node scripts/fillCategoryBarcodes.js",
+    "fix-images": "node scripts/fixImageUrls.js"
   },
   "author": "",
   "license": "ISC",
