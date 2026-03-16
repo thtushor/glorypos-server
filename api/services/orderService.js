@@ -170,8 +170,8 @@ const OrderService = {
                         creationSuccess = true;
                     } catch (error) {
                         // If it's a unique constraint error on orderNumber, retry
-                        if (error.name === 'SequelizeUniqueConstraintError' && 
-                            error.errors.some(e => e.path === 'orderNumber') && 
+                        if (error.name === 'SequelizeUniqueConstraintError' &&
+                            error.errors.some(e => e.path === 'orderNumber') &&
                             attempts < 5) {
                             continue;
                         }
@@ -1752,7 +1752,7 @@ const OrderService = {
             const productWhere = {
                 UserId: { [Op.in]: targetShopIds },
             };
-            
+
             const activeProductWhere = {
                 ...productWhere,
                 status: "active",
@@ -1845,7 +1845,7 @@ const OrderService = {
                     ],
                     raw: true,
                 });
-                
+
                 const itemStats = await OrderItem.findOne({
                     attributes: [[fn("SUM", col("quantity")), "itemsSold"]],
                     include: [{ model: Order, attributes: [], where: orderWhere }],
@@ -2525,7 +2525,7 @@ const OrderService = {
                 return { status: false, message: "Order not found or unauthorized" };
             }
 
-            if (order.orderStatus === 'completed') {
+            if (order.paymentStatus === 'completed' && order.orderStatus === 'completed') {
                 return { status: true, message: "Order is already completed", data: order };
             }
 
