@@ -1,0 +1,194 @@
+[2026-03-15T16:31:02.284Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:02.343Z] Completed /public-list in 59ms
+[2026-03-15T16:31:03.754Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:03.775Z] Completed /public-list in 21ms
+[2026-03-15T16:31:04.593Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:04.608Z] Completed /public-list in 15ms
+[2026-03-15T16:31:07.305Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:07.316Z] Completed /public-list in 11ms
+[2026-03-15T16:31:09.002Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:09.013Z] Completed /public-list in 11ms
+[2026-03-15T16:31:10.312Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:10.322Z] Completed /public-list in 10ms
+[2026-03-15T16:31:13.249Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:31:13.259Z] Completed /public-list in 10ms
+[2026-03-15T16:32:14.920Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:32:14.940Z] Completed /public-list in 20ms
+[2026-03-15T16:34:58.546Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:34:58.568Z] Completed /public-list in 22ms
+[2026-03-15T16:35:00.511Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:35:00.528Z] Completed /public-list in 17ms
+[2026-03-15T16:35:43.788Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:35:43.803Z] Completed /public-list in 15ms
+[2026-03-15T16:36:01.295Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T16:36:01.343Z] Completed /public-list in 48ms
+[2026-03-15T17:05:48.956Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:05:48.976Z] Completed /public-list in 20ms
+[2026-03-15T17:06:30.104Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:06:30.121Z] Completed /public-list in 17ms
+[2026-03-15T17:06:33.095Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:06:33.108Z] Completed /public-list in 13ms
+[2026-03-15T17:06:35.346Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:06:35.361Z] Completed /public-list in 15ms
+[2026-03-15T17:07:36.167Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:07:36.195Z] Completed /public-list in 28ms
+[2026-03-15T17:26:12.419Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:12.431Z] Completed /public-list in 12ms
+[2026-03-15T17:26:17.916Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:17.926Z] Completed /public-list in 10ms
+[2026-03-15T17:26:19.683Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:19.691Z] Completed /public-list in 8ms
+[2026-03-15T17:26:22.294Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:22.303Z] Completed /public-list in 9ms
+[2026-03-15T17:26:23.514Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:23.523Z] Completed /public-list in 9ms
+[2026-03-15T17:26:24.514Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:24.524Z] Completed /public-list in 10ms
+[2026-03-15T17:26:25.335Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:25.344Z] Completed /public-list in 9ms
+[2026-03-15T17:26:26.069Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:26:26.079Z] Completed /public-list in 10ms
+[2026-03-15T17:40:50.178Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:40:50.193Z] Completed /public-list in 15ms
+[2026-03-15T17:46:23.776Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:46:23.784Z] Completed /public-list in 8ms
+[2026-03-15T17:46:26.688Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:46:26.698Z] Completed /public-list in 10ms
+[2026-03-15T17:50:15.903Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:15.918Z] Completed /public-list in 15ms
+[2026-03-15T17:50:16.079Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:16.090Z] Completed /public-list in 11ms
+[2026-03-15T17:50:16.245Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:16.257Z] Completed /public-list in 12ms
+[2026-03-15T17:50:16.312Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:16.325Z] Completed /public-list in 13ms
+[2026-03-15T17:50:16.571Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:16.585Z] Completed /public-list in 14ms
+[2026-03-15T17:50:16.804Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:16.816Z] Completed /public-list in 12ms
+[2026-03-15T17:50:17.678Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:17.687Z] Completed /public-list in 9ms
+[2026-03-15T17:50:22.876Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:22.885Z] Completed /public-list in 9ms
+[2026-03-15T17:50:36.958Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:50:36.972Z] Completed /public-list in 14ms
+[2026-03-15T17:54:52.996Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T17:54:53.011Z] Completed /public-list in 15ms
+[2026-03-15T18:39:44.933Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:39:44.948Z] Completed /public-list in 15ms
+[2026-03-15T18:39:46.956Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:39:46.969Z] Completed /public-list in 13ms
+[2026-03-15T18:39:48.281Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:39:48.293Z] Completed /public-list in 12ms
+[2026-03-15T18:39:49.187Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:39:49.202Z] Completed /public-list in 15ms
+[2026-03-15T18:45:45.860Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:45:45.872Z] Completed /public-list in 12ms
+[2026-03-15T18:46:28.703Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:46:28.719Z] Completed /public-list in 16ms
+[2026-03-15T18:48:59.801Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:48:59.818Z] Completed /public-list in 17ms
+[2026-03-15T18:58:25.233Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:58:25.256Z] Completed /public-list in 23ms
+[2026-03-15T18:58:33.218Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:58:33.234Z] Completed /public-list in 16ms
+[2026-03-15T18:59:33.410Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T18:59:33.426Z] Completed /public-list in 16ms
+[2026-03-15T19:06:16.550Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-15T19:06:16.562Z] Completed /public-list in 12ms
+[2026-03-16T10:46:38.195Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T10:46:38.390Z] Completed /public-list in 195ms
+[2026-03-16T16:52:51.965Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:52.220Z] Completed /public-list in 255ms
+[2026-03-16T16:52:54.148Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:54.166Z] Completed /public-list in 18ms
+[2026-03-16T16:52:55.078Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:55.163Z] Completed /public-list in 85ms
+[2026-03-16T16:52:55.727Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:55.739Z] Completed /public-list in 12ms
+[2026-03-16T16:52:56.140Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:56.159Z] Completed /public-list in 19ms
+[2026-03-16T16:52:56.617Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:56.631Z] Completed /public-list in 14ms
+[2026-03-16T16:52:57.383Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:57.400Z] Completed /public-list in 17ms
+[2026-03-16T16:52:58.158Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:58.171Z] Completed /public-list in 13ms
+[2026-03-16T16:52:58.989Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:59.001Z] Completed /public-list in 12ms
+[2026-03-16T16:52:59.853Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:52:59.865Z] Completed /public-list in 12ms
+[2026-03-16T16:53:00.606Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:00.620Z] Completed /public-list in 14ms
+[2026-03-16T16:53:01.287Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:01.306Z] Completed /public-list in 19ms
+[2026-03-16T16:53:01.879Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:01.902Z] Completed /public-list in 23ms
+[2026-03-16T16:53:02.391Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:02.421Z] Completed /public-list in 30ms
+[2026-03-16T16:53:02.734Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:02.750Z] Completed /public-list in 16ms
+[2026-03-16T16:53:03.115Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:03.128Z] Completed /public-list in 13ms
+[2026-03-16T16:53:03.442Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:03.455Z] Completed /public-list in 13ms
+[2026-03-16T16:53:03.873Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:03.885Z] Completed /public-list in 12ms
+[2026-03-16T16:53:04.365Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:04.377Z] Completed /public-list in 12ms
+[2026-03-16T16:53:04.947Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:04.956Z] Completed /public-list in 9ms
+[2026-03-16T16:53:05.351Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:05.362Z] Completed /public-list in 11ms
+[2026-03-16T16:53:05.705Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:05.717Z] Completed /public-list in 12ms
+[2026-03-16T16:53:06.011Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:06.024Z] Completed /public-list in 13ms
+[2026-03-16T16:53:06.515Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:06.527Z] Completed /public-list in 12ms
+[2026-03-16T16:53:07.013Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:07.025Z] Completed /public-list in 12ms
+[2026-03-16T16:53:07.960Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:07.972Z] Completed /public-list in 12ms
+[2026-03-16T16:53:08.765Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:08.775Z] Completed /public-list in 10ms
+[2026-03-16T16:53:09.437Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:09.450Z] Completed /public-list in 13ms
+[2026-03-16T16:53:10.209Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:10.224Z] Completed /public-list in 15ms
+[2026-03-16T16:53:10.942Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:10.963Z] Completed /public-list in 21ms
+[2026-03-16T16:53:11.578Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:11.589Z] Completed /public-list in 11ms
+[2026-03-16T16:53:12.191Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:12.201Z] Completed /public-list in 10ms
+[2026-03-16T16:53:12.817Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:12.829Z] Completed /public-list in 12ms
+[2026-03-16T16:53:13.316Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:13.329Z] Completed /public-list in 13ms
+[2026-03-16T16:53:13.756Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:13.774Z] Completed /public-list in 18ms
+[2026-03-16T16:53:14.176Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:14.185Z] Completed /public-list in 9ms
+[2026-03-16T16:53:14.485Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:14.497Z] Completed /public-list in 12ms
+[2026-03-16T16:53:14.845Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:14.856Z] Completed /public-list in 11ms
+[2026-03-16T16:53:15.232Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:15.241Z] Completed /public-list in 9ms
+[2026-03-16T16:53:15.814Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:15.824Z] Completed /public-list in 10ms
+[2026-03-16T16:53:18.694Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T16:53:18.704Z] Completed /public-list in 10ms
+[2026-03-16T17:33:14.481Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T17:33:14.494Z] Completed /public-list in 13ms
+[2026-03-16T17:33:17.335Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T17:33:17.347Z] Completed /public-list in 12ms
+[2026-03-16T17:33:18.603Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T17:33:18.618Z] Completed /public-list in 15ms
+[2026-03-16T17:33:19.030Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T17:33:19.041Z] Completed /public-list in 11ms
+[2026-03-16T17:44:06.910Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T17:44:06.923Z] Completed /public-list in 13ms
+[2026-03-16T18:23:06.906Z] GET /api/products/public-list - Query: {"shopId":"4"}
+[2026-03-16T18:23:06.919Z] Completed /public-list in 13ms
