@@ -43,7 +43,7 @@ const SchedulerService = require("./services/SchedulerService");
 
 // Configure CORS to allow specific origins and credentials
 app.use(cors({
-  origin: process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',') : true,
+  origin: process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(url => url.trim()) : true,
   credentials: true
 }));
 
