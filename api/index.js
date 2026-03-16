@@ -9,8 +9,10 @@ const { limiter } = require("./middleware/security");
 
 const app = express();
 
-app.use(helmet());
-app.use(limiter);
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 app.use(compression());
 const path = require("path");
 const cookiesParser = require("cookie-parser");
@@ -65,6 +67,7 @@ app.use(cookiesParser());
 
 
 app.use(express.static("public"));
+app.use(limiter);
 
 // here we add router
 

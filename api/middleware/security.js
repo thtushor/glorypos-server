@@ -5,7 +5,7 @@ const rateLimit = require("express-rate-limit");
  */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per window
+  max: 1000, // Increased to 1000 for dashboard image heavy loads
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -19,7 +19,7 @@ const limiter = rateLimit({
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit each IP to 20 auth requests per window
+  max: 50, // Increased to 50
   standardHeaders: true,
   legacyHeaders: false,
   message: {
