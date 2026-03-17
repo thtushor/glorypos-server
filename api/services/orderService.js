@@ -2406,13 +2406,10 @@ const OrderService = {
             const { startDate, endDate } = query;
             const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
 
-            if (!startDate || !endDate) {
-                throw new Error("Start date and end date are required");
-            }
+            let start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+            let end = endDate ? new Date(endDate) : new Date();
 
-            const start = new Date(startDate);
             start.setHours(0, 0, 0, 0);
-            const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
 
             const whereClause = {
