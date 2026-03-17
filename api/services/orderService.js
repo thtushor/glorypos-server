@@ -2406,25 +2406,26 @@ const OrderService = {
             const { startDate, endDate } = query;
             const targetShopIds = resolveShopFilter(accessibleShopIds, query.shopId);
 
-            let start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
-            let end = endDate ? new Date(endDate) : new Date();
-
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-
             const whereClause = {
                 UserId: { [Op.in]: targetShopIds },
-                orderStatus: 'completed',
-                orderDate: {
-                    [Op.between]: [start, end]
-                }
+                orderStatus: 'completed'
             };
 
-            // Calculate date difference to determine report type
-            const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+            let type = 'monthly';
+            let diffDays = 0;
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                whereClause.orderDate = {
+                    [Op.between]: [start, end]
+                };
 
-            // If date range is within one month, show daily report
-            const type = diffDays <= 31 ? 'daily' : 'monthly';
+                diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                type = diffDays <= 31 ? 'daily' : 'monthly';
+            }
+
             const groupByFormat = type === 'daily'
                 ? 'DATE(orderDate)'
                 : "DATE_FORMAT(orderDate, '%Y-%m')";
