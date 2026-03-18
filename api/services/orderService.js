@@ -397,17 +397,25 @@ const OrderService = {
 
 
                 // A) Order Created Notification (Only for new orders)
-                if (!orderId) {
-                    await NotificationService.createNotification({
-                        shopId,
-                        title: 'New Order Created',
-                        message: `Order #${order.orderNumber} has been created.`,
-                        type: 'ORDER_CREATED',
-                        link: `/orders/${order.id}`,
-                        referenceId: order.id.toString(),
-                        referenceType: 'order'
-                    });
-                }
+                if (!orderId && order) {
+    const tablePrefix = order?.tableNumber 
+        ? `Table Number: ${order?.tableNumber} - ` 
+        : "";
+
+    const tableMessage = order?.tableNumber
+        ? ` (Table ${order?.tableNumber})`
+        : "";
+
+    await NotificationService.createNotification({
+        shopId,
+        title: `${tablePrefix}New Order Created`,
+        message: `Order #${order.orderNumber}${tableMessage} has been created.`,
+        type: 'ORDER_CREATED',
+        link: `/orders/${order.id}`,
+        referenceId: String(order.id),
+        referenceType: 'order'
+    });
+}
 
                 // B) Stock Alert Notification
                 for (const item of validatedItems) {
